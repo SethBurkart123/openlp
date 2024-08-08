@@ -330,7 +330,7 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
 
                     return
         self._media_bar(controller, 'load')
-        if self.decide_autoplay(service_item, controller, hidden):
+        if self.decide_autoplay(service_item, hidden):
             start_hidden = controller.media_info.is_theme_background and controller.is_live and \
                 (controller.current_hide_mode == HideMode.Blank or controller.current_hide_mode == HideMode.Screen)
             if not self.media_play(controller, start_hidden):
@@ -343,33 +343,22 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
                        format(nm=self.current_media_players[controller.controller_type].display_name))
         return True
 
-    def decide_autoplay(self, service_item, controller, hidden: bool) -> bool:
+    def decide_autoplay(self, service_item, hidden: bool) -> bool:
         """
         Function to decide if we can / want to autoplay a media item
 
         :param service_item: The Media Service item
-        :param controller: The controller on which the item is to be played
-        :param hidden: is the display hidden at present?
+        :param hidden: Is the display hidden at present?
         :return: Can we autoplay the media.
         """
-        if not controller.is_live:
-            return True
         is_autoplay = False
-        # Visible or background requested or Service Item wants background media
-        if service_item.requires_media() and hidden == HideMode.Theme:
-            is_autoplay = True
-        elif not hidden and (service_item.will_auto_start or
-                             self.settings.value('media/media auto start') == QtCore.Qt.CheckState.Checked):
-            is_autoplay = True
-        # Unblank on load set
-        elif self.settings.value('core/auto unblank'):
-            is_autoplay = True
-        if controller.media_info.is_theme_background:
-            is_autoplay = True
-        if controller.media_info.media_type == MediaType.Stream:
-            is_autoplay = True
-        if controller.media_info.media_type == MediaType.Stream:
-            is_autoplay = True
+        if (service_item.requires_media()):
+            if self.settings.value('core/auto unblank'):
+                is_autoplay = True
+            elif not hidden and (
+                    service_item.will_auto_start or
+                    self.settings.value('media/media auto start') == QtCore.Qt.CheckState.Checked):
+                is_autoplay = True
         return is_autoplay
 
     @staticmethod
