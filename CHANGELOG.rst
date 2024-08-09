@@ -1,3 +1,22 @@
+OpenLP 3.1.3
+============
+
+ * Correct media auto start behaviour.
+ * Updated translations
+ * Deal with PyMuPDF installed as fitz_old
+ * Fix that our songbeamer chord parsing was partly based on a malformed file leading to weird imports
+ * Web API method "get_language" returns the two-letter ISO 639 language code instead of "en" in case the language in OpenLP is auto detected.
+ * Add setting that live preview shows blank screen
+ * Add Web API endpoint to delete service items
+ * Use correct transition delay when screen is hidden
+ * Always show contents in live preview panel
+ * Display presentation slides in live preview panel when main display is hidden.
+ * Handle Python versions which include release levels by ignoring the release level, and restricting the check to only the major, minor, and micro components of the full version number.
+ * Prevent crash by adding check for existence of linked audio file.
+ * Do not show screen change message twice
+ * Fixed Issue 1584 (switching Windows user account crashes an active OpenLP instance)
+
+
 OpenLP 3.1.2
 ============
 
