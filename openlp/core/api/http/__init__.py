@@ -20,12 +20,14 @@
 ##########################################################################
 import base64
 from functools import wraps
+from importlib import metadata
 
 from flask import Response
-from werkzeug import __version__ as wz_version
 from werkzeug.datastructures import WWWAuthenticate
 
 from openlp.core.common.registry import Registry
+
+WERKZEUG_VERSION = metadata.version('werkzeug')
 
 
 def check_auth(auth):
@@ -49,7 +51,7 @@ def authenticate():
     Sends a 401 response that enables basic auth to be triggered
     """
     resp = Response(status=401)
-    if wz_version.startswith('2.4') or wz_version.startswith('3.'):
+    if WERKZEUG_VERSION.startswith('2.4') or WERKZEUG_VERSION.startswith('3.'):
         resp.www_authenticate = WWWAuthenticate('basic', {'realm': 'OpenLP Login Required'})
     else:
         resp.www_authenticate.set_basic('OpenLP Login Required')
