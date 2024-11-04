@@ -46,7 +46,7 @@ def search(plugin_name, text):
         if hasattr(plugin.media_item.search, '__pyqtSignature__'):
             # If this method has a signature, it means that it should be called from the parent thread
             results = plugin.media_item.staticMetaObject.invokeMethod(
-                plugin.media_item, 'search', QtCore.Qt.BlockingQueuedConnection,
+                plugin.media_item, 'search', QtCore.Qt.ConnectionType.DirectConnection,
                 QtCore.Q_RETURN_ARG(list), QtCore.Q_ARG(str, text), QtCore.Q_ARG(bool, False))
         else:
             # Fall back to original behaviour
