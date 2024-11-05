@@ -66,6 +66,8 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
     vlc_preview_media_tick = QtCore.pyqtSignal()
     vlc_live_media_stop = QtCore.pyqtSignal()
     vlc_preview_media_stop = QtCore.pyqtSignal()
+    will_autoplay_media: bool
+    will_autoplay_media_hidden: bool
 
     def __init__(self, parent=None):
         """
@@ -247,15 +249,14 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
         """
         player.resize(controller)
 
-    def load_video(self, source, service_item, hidden: bool = False, is_theme_background: bool = False) -> bool:
+    def load_video(self, source, service_item, is_theme_background: bool = False) -> bool:
         """
         Loads and starts a video to run and sets the stored sound value.
 
         :param source: Where the call originated form
         :param service_item: The player which is doing the playing
-
-        :param hidden: The player which is doing the playing
         :param is_theme_background: Is the theme providing a background
+        :return: True if the video could be loaded else False.
         """
         controller = self._display_controllers(source)
         controller.media_info.is_theme_background = is_theme_background
@@ -330,12 +331,10 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
 
                     return
         self._media_bar(controller, 'load')
-        if self.decide_autoplay(service_item, hidden):
-            start_hidden = controller.media_info.is_theme_background and controller.is_live and \
-                (controller.current_hide_mode == HideMode.Blank or controller.current_hide_mode == HideMode.Screen)
-            if not self.media_play(controller, start_hidden):
-                critical_error_message_box(UiStrings().UnsupportedFile,
-                                           UiStrings().UnsupportedFile)
+        self.decide_autoplay(service_item, controller)
+        if (self.will_autoplay_media):
+            if not self.media_play(controller, self.will_autoplay_media_hidden):
+                critical_error_message_box(UiStrings().UnsupportedFile, UiStrings().UnsupportedFile)
                 return False
         self._update_seek_ui(controller)
         self.set_controls_visible(controller, True)
@@ -343,23 +342,27 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
                        format(nm=self.current_media_players[controller.controller_type].display_name))
         return True
 
-    def decide_autoplay(self, service_item, hidden: bool) -> bool:
+    def decide_autoplay(self, service_item, controller: SlideController) -> None:
         """
         Function to decide if we can / want to autoplay a media item
 
         :param service_item: The Media Service item
-        :param hidden: Is the display hidden at present?
-        :return: Can we autoplay the media.
+        :parma controller: The media controller.
         """
-        is_autoplay = False
-        if (service_item.requires_media()):
-            if self.settings.value('core/auto unblank'):
-                is_autoplay = True
-            elif not hidden and (
-                    service_item.will_auto_start or
-                    self.settings.value('media/media auto start') == QtCore.Qt.CheckState.Checked):
-                is_autoplay = True
-        return is_autoplay
+        self.will_autoplay_media = False
+        will_autoplay_audio: bool
+        will_autoplay_video: bool
+        if service_item.requires_media():
+            will_autoplay_audio = service_item.will_auto_start
+            will_autoplay_video = self.settings.value('media/media auto start') == QtCore.Qt.CheckState.Checked
+        else:
+            will_autoplay_audio = False
+            will_autoplay_video = False
+        if will_autoplay_audio or will_autoplay_video:
+            self.will_autoplay_media_hidden = controller.media_info.is_theme_background and controller.is_live and \
+                (controller.current_hide_mode == HideMode.Blank or controller.current_hide_mode == HideMode.Screen)
+            if (will_autoplay_video or not self.will_autoplay_media_hidden):
+                self.will_autoplay_media = True
 
     @staticmethod
     def media_length(media_path: Union[str, Path]) -> int:
@@ -828,8 +831,8 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
             return
         Registry().execute('live_display_show')
         if self.live_controller.controller_type in self.current_media_players:
-            if self.current_media_players[self.live_controller.controller_type].get_live_state() != \
-                    MediaState.Playing:
+            if self.will_autoplay_media and \
+               self.current_media_players[self.live_controller.controller_type].get_live_state() != MediaState.Playing:
                 self.media_play(self.live_controller)
             else:
                 self._media_set_visibility(self.live_controller, True)
