@@ -31,7 +31,11 @@ from typing import Optional, Union
 
 import time
 from PyQt5 import QtCore
-from websockets import serve
+
+try:
+    from websockets.server import serve
+except ImportError:
+    from websockets import serve
 
 from openlp.core.common.mixins import LogMixin, RegistryProperties
 from openlp.core.common.registry import Registry, RegistryBase
