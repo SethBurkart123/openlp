@@ -1,9 +1,19 @@
 stages:
   - test
+  - build
   - deploy
 
+default:
+  retry: 2
+
 variables:
+  PYTHON_VERSION_WINDOWS_AND_MACOS: "3.11"
   IMAGE_BASE: $CI_REGISTRY/openlp/runners
+  OPENLP_HOST: "new.openlp.io"
+  PACKAGING_REPOSITORY_NAME: "packaging"
+  PACKAGING_BRANCH_NAME: "master"
+  PACKAGING_DIRECTORY_NAME: "$PACKAGING_REPOSITORY_NAME-$PACKAGING_BRANCH_NAME"
+  PACKAGING_ZIP_FILE_NAME: "$PACKAGING_DIRECTORY_NAME.zip"
 
 lint-python:
   stage: test
@@ -56,31 +66,151 @@ test-arch:
     - sh scripts/generate_resources.sh
     - xvfb-run -s '-screen 0 1024x768x24' pytest --color=no --disable-warnings
 
-test-macos-intel:
-  stage: test
-  tags:
-    - apple-amd64
+.pip_dependencies:
   script:
-    - export PATH=/opt/local/bin:$PATH
-    - sh scripts/generate_resources.sh
-    - python3 -m pytest --color=no --disable-warnings --cov openlp
-    - mv .coverage macos.coverage
-  artifacts:
-    paths:
-      - macos.coverage
-  only:
-    - master@openlp/openlp
+    - "# Updating pip"
+    - python -m pip install --upgrade pip
+    - "# Installing generic dependencies from PyPI (PySide6 is necessary to provide the lrelease tool for compiling the translations)"
+    - >
+      pip install alembic
+      beautifulsoup4
+      chardet
+      flask
+      flask-cors
+      lxml
+      Mako
+      mock
+      mysql-connector-python
+      packaging
+      platformdirs
+      psycopg2-binary
+      pyenchant
+      pymediainfo
+      PyQt5
+      PyQtWebEngine
+      PySide6
+      pysword
+      pytest
+      pytest-qt
+      python-vlc
+      QDarkStyle
+      qrcode
+      QtAwesome
+      requests
+      six
+      sqlalchemy
+      waitress
+      websockets
 
-test-macos-arm:
+.run_tests:
+  script:
+    - "# Running tests"
+    - pytest --color=no --disable-warnings
+
+.recompile_boot_loader_pyinstaller:
+  # It is necessary to recompile the boot loader of PyInstaller to prevent antivirus false positives.
+  # See: https://github.com/pyinstaller/pyinstaller/blob/develop/.github/ISSUE_TEMPLATE/antivirus.md
+  script:
+    - $pyInstallerVersion = '6.11.1'
+    - "# Downloading PyInstaller from GitHub"
+    - $zipFileName = "v$pyInstallerVersion.zip"
+    - Invoke-WebRequest -OutFile "$env:Temp\$zipFileName" -Uri https://github.com/pyinstaller/pyinstaller/archive/refs/tags/$zipFileName
+    - "# Extracting the ZIP file"
+    - Expand-Archive -Path "$env:Temp\$zipFileName" -DestinationPath .
+    - Set-Location ".\pyinstaller-$pyInstallerVersion\bootloader"
+    - "# Building the boot loader"
+    - python ./waf all --target-arch=64bit
+    - Set-Location '..'
+    - pip install .
+    - Set-Location '..'
+
+test-macos:
   stage: test
   tags:
-    - apple-arm
+    - saas-macos-medium-m1
+  image: macos-14-xcode-15
+  variables:
+    # Set environment variable QT_QPA_PLATFORM to offscreen to avoid UI troubles
+    QT_QPA_PLATFORM: "offscreen"
+    # Set the pip cache folder so that we can cache the content.
+    # See: https://pip.pypa.io/en/stable/topics/caching/
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
+  cache:
+    paths:
+      - pip-cache
   script:
-    - export PATH=/opt/local/bin:$PATH
-    - sh scripts/generate_resources.sh
-    - python3 -m pytest --color=no --disable-warnings
-  only:
-    - master@openlp/openlp
+    - export HOMEBREW_NO_AUTO_UPDATE=TRUE
+    - export HOMEBREW_NO_INSTALL_CLEANUP=TRUE
+    - export HOMEBREW_NO_ENV_HINTS=TRUE
+    - brew install pyenv
+    - pythonVersion=$PYTHON_VERSION_WINDOWS_AND_MACOS
+    - pythonFullVersion="$pythonVersion.10"
+    - pyenv install $pythonFullVersion
+    - echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zprofile
+    - echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zprofile
+    - echo 'eval "$(pyenv init --path)"' >> ~/.zprofile
+    - echo 'eval "$(pyenv init -)"' >> ~/.zprofile
+    - . ~/.zprofile
+    - pyenv global $pythonFullVersion
+    - !reference [.pip_dependencies, script]
+    - "# Installing macOS only dependencies from PyPI"
+    - >
+      pip install py-applescript
+      pyobjc-core
+      pyobjc-framework-Cocoa
+      Pyro5
+    - "# Installing PyICU"
+    - brew install pkg-config icu4c
+    - export PATH="$PATH:/opt/homebrew/opt/icu4c/bin:/opt/homebrew/opt/icu4c/sbin"
+    - export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/opt/homebrew/opt/icu4c/lib/pkgconfig"
+    - pip install pyicu
+    - "# Installing libmediainfo"
+    - brew install libmediainfo
+    - !reference [.run_tests, script]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+
+test-windows:
+  stage: test
+  tags:
+    - saas-windows-medium-amd64
+  variables:
+    # Set environment variable QT_QPA_PLATFORM to offscreen to avoid UI troubles
+    QT_QPA_PLATFORM: "offscreen"
+    # Set the pip cache folder so that we can cache the content.
+    # See: https://pip.pypa.io/en/stable/topics/caching/
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/pip-cache"
+  cache:
+    paths:
+      - pip-cache
+  script:
+    - "# Enabling feature that doesn't let Chocolatey ask for confirmation"
+    - choco feature enable --name='allowGlobalConfirmation'
+    - "# Installing VLC"
+    - choco install vlc
+    - $pythonVersion = $env:PYTHON_VERSION_WINDOWS_AND_MACOS
+    - "# Installing Python $pythonVersion"
+    - $pythonVersion = $pythonVersion.Replace('.', '')
+    - choco install python$pythonVersion
+    - "# Importing PowerShell module for the Chocolatey profile"
+    - Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
+    - "# Refreshing the environment"
+    - refreshenv
+    - "# Downloading the necessary files for Qt5 from OpenLP"
+    - $zipFileName = 'requiredfiles.zip'
+    - Invoke-WebRequest -OutFile "$env:Temp\$zipFileName" -Uri "https://get.openlp.org/win-sdk/$zipFileName"
+    - "# Extracting the ZIP file"
+    - Expand-Archive -Path "$env:Temp\$zipFileName" -DestinationPath "C:\Windows\System32"
+    - !reference [.pip_dependencies, script]
+    - "# Installing Windows only dependencies from PyPI"
+    - >
+      pip install pyodbc
+      pypiwin32
+    - $pyIcuVersion = '2.11'
+    - $pyIcuPackageFileName = "PyICU-$pyIcuVersion-cp$pythonVersion-cp$pythonVersion-win_amd64.whl"
+    - "# Installing PyICU for Windows from GitHub"
+    - pip install https://github.com/cgohlke/pyicu-build/releases/download/v$pyIcuVersion/$pyIcuPackageFileName
+    - !reference [.run_tests, script]
 
 test-display:
   stage: test
@@ -89,22 +219,112 @@ test-display:
     - yarn install
     - yarn test --browsers ChromiumHeadlessCI
 
+build-windows:
+  stage: build
+  extends: test-windows
+  script:
+    - !reference [test-windows, script]
+    - "# Installing WiX Toolset"
+    - choco install wixtoolset --ignore-dependencies
+    - "# Refreshing the environment"
+    - refreshenv
+    - "# Downloading PortableApps Installer and Launcher from OpenLP"
+    - "# because the installers of PortableApps offer no silent install."
+    - $zipFileName = 'PortableApps.zip'
+    - Invoke-WebRequest -OutFile "$env:Temp\$zipFileName" -Uri "https://get.openlp.org/win-sdk/$zipFileName"
+    - Set-Location '..'
+    - "# Extracting the ZIP file"
+    - Expand-Archive -Path "$env:Temp\$zipFileName" -DestinationPath .
+    - !reference [.recompile_boot_loader_pyinstaller, script]
+    - "# Downloading the necessary files for packaging from GitLab"
+    - Invoke-WebRequest -OutFile "$env:Temp\$env:PACKAGING_ZIP_FILE_NAME" -Uri "https://gitlab.com/$env:CI_PROJECT_NAMESPACE/$env:PACKAGING_REPOSITORY_NAME/-/archive/$env:PACKAGING_BRANCH_NAME/$env:PACKAGING_ZIP_FILE_NAME"
+    - "# Extracting the ZIP file"
+    - Expand-Archive -Path "$env:Temp\$env:PACKAGING_ZIP_FILE_NAME" -DestinationPath .
+    - Set-Location $env:PACKAGING_DIRECTORY_NAME
+    - "# Creating Windows MSI and Portable"
+    - python builders/windows-builder.py --release $env:CI_COMMIT_TAG --use-qt5 --skip-update --config windows/config-gitlab.ini --branch $env:CI_PROJECT_DIR --portable
+  artifacts:
+    name: $CI_COMMIT_REF_SLUG
+    paths:
+      - dist
+    expire_in: 1 days
+  rules:
+    - if: $CI_COMMIT_TAG
+
+build-macos:
+  stage: build
+  tags:
+    - saas-macos-medium-m1
+  image: macos-14-xcode-15
+  variables:
+    # Set environment variable QT_QPA_PLATFORM to offscreen to avoid UI troubles
+    QT_QPA_PLATFORM: "offscreen"
+  extends: test-macos
+  script:
+    - !reference [test-macos, script]
+    - "# Installing dmgbuild tool"
+    - pip install --no-warn-script-location dmgbuild
+    - "# Installing macholib"
+    - pip install macholib
+    - "# Building enchant needed for pyenchant with brew"
+    - brew install enchant
+    - export PYENCHANT_LIBRARY_PATH=/opt/homebrew/lib/libenchant-2.2.dylib
+    - "# Copying and linking the media info library files"
+    - sitePackagesDirectoryPyMediaInfo="/Users/gitlab/.pyenv/versions/$pythonFullVersion/lib/python$pythonVersion/site-packages/pymediainfo"
+    - cp "/opt/homebrew/lib/libmediainfo.dylib" $sitePackagesDirectoryPyMediaInfo
+    - ln -s "$sitePackagesDirectoryPyMediaInfo/libmediainfo.dylib" "$sitePackagesDirectoryPyMediaInfo/libmediainfo.0.dylib"
+    - "# Installing PyInstaller"
+    - pip install pyinstaller
+    - "# Downloading the necessary files for packaging from GitLab"
+    - curl -o "$TMPDIR/$PACKAGING_ZIP_FILE_NAME" "https://gitlab.com/$CI_PROJECT_NAMESPACE/$PACKAGING_REPOSITORY_NAME/-/archive/$PACKAGING_BRANCH_NAME/$PACKAGING_ZIP_FILE_NAME"
+    - "# Extracting the ZIP file"
+    - unzip "$TMPDIR/$PACKAGING_ZIP_FILE_NAME"
+    - cd $PACKAGING_DIRECTORY_NAME
+    - "# Creating macOS Installer"
+    - python builders/macos-builder.py --release $CI_COMMIT_TAG --use-qt5 --skip-update --config macos/config-gitlab.ini --branch $CI_PROJECT_DIR
+  artifacts:
+    name: $CI_COMMIT_REF_SLUG
+    paths:
+      - dist
+    expire_in: 1 days
+  rules:
+    - if: $CI_COMMIT_TAG
+
+deploy-installers-for-windows-and-macos:
+  stage: deploy
+  image: $IMAGE_BASE/ssh
+  script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - eval $(ssh-agent -s)
+    - ssh-add ~/.ssh/id_rsa
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - ssh openlp@$OPENLP_HOST "mkdir -p /home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG"
+    - cd dist
+    - scp *.exe openlp@$OPENLP_HOST:/home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG/
+    - scp *.msi openlp@$OPENLP_HOST:/home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG/
+    - scp *.dmg openlp@$OPENLP_HOST:/home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG/
+  rules:
+    - if: $CI_COMMIT_TAG
+
 upload-pypi:
   stage: deploy
   image: $IMAGE_BASE/debian
   script:
     - python3 setup.py sdist bdist_wheel
     - twine upload dist/*
-  only:
-    - tags
+  rules:
+    - if: $CI_COMMIT_TAG
 
 pages:
   stage: deploy
   image: $IMAGE_BASE/debian
   script:
-    - fixpaths linux.coverage
-    - fixpaths macos.coverage
-    - python3-coverage combine linux.coverage macos.coverage
+    # - fixpaths linux.coverage
+    # - fixpaths macos.coverage
+    # - python3-coverage combine linux.coverage macos.coverage
+    - mv linux.coverage .coverage
     - python3-coverage html
     - mv htmlcov public
     - python3-coverage xml
@@ -119,6 +339,5 @@ pages:
         path: coverage.xml
   dependencies:
     - test-debian
-    - test-macos-intel
-  only:
-    - master@openlp/openlp
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"

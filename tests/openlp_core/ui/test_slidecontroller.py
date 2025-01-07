@@ -81,8 +81,9 @@ def test_is_slide_loaded(settings: Settings):
 
     stop = perf_counter()
 
-    # THEN: The elapsed time should be half a second
-    assert round(stop - start, 2) == 0.5
+    # THEN: The elapsed time should be approximately half a second
+    elapsed_time = round(stop - start, 2)
+    assert elapsed_time > 0.4 and elapsed_time < 0.6
 
     # GIVEN: The presentation screen is hidden
     slide_controller.is_live = True
