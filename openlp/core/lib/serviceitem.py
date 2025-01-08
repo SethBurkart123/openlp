@@ -878,6 +878,13 @@ class ServiceItem(RegistryProperties):
                 if self.get_frame_path(frame=frame) in invalid_paths:
                     self.remove_frame(frame)
 
+    def requires_audio(self):
+        return self.is_capable(ItemCapabilities.HasBackgroundAudio)
+
+    def requires_video(self):
+        return self.is_capable(ItemCapabilities.HasBackgroundVideo) or \
+            self.is_capable(ItemCapabilities.HasBackgroundStream)
+
     def requires_media(self):
         return self.is_capable(ItemCapabilities.HasBackgroundAudio) or \
             self.is_capable(ItemCapabilities.HasBackgroundVideo) or \

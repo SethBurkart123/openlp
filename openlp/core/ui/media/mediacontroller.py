@@ -352,9 +352,11 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
         self.will_autoplay_media = False
         will_autoplay_audio: bool
         will_autoplay_video: bool
-        if service_item.requires_media():
-            will_autoplay_audio = service_item.will_auto_start
-            will_autoplay_video = self.settings.value('media/media auto start') == QtCore.Qt.CheckState.Checked
+        if service_item.is_media() or service_item.requires_media():
+            will_autoplay_audio = service_item.will_auto_start and service_item.requires_audio()
+            will_autoplay_video = (service_item.requires_video() and
+                                   self.settings.value('media/media auto start') == QtCore.Qt.CheckState.Checked) or \
+                                  (service_item.will_auto_start and service_item.is_media())
         else:
             will_autoplay_audio = False
             will_autoplay_video = False

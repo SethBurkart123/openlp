@@ -844,12 +844,53 @@ def test_media_play(media_env):
     mocked_controller._set_theme.assert_called_once()
 
 
+def test_decide_autoplay_media_item_unchecked_media_auto_start(media_env, settings):
+    """
+    Test that a media item, with unchecked media, behaves
+    """
+    # GIVEN: A media service item and media auto start inactive
+    mocked_service_item = MagicMock()
+    mocked_service_item.is_media.return_value = True
+
+    settings.setValue('media/media auto start', QtCore.Qt.CheckState.Unchecked)
+    mocked_service_item.will_auto_start = False
+
+    mocked_controller = MagicMock()
+
+    # WHEN: decide_autoplay() is called
+    media_env.media_controller.decide_autoplay(mocked_service_item, mocked_controller)
+
+    # THEN: Autoplay will obey the following
+    assert media_env.media_controller.will_autoplay_media is False, "The Media should NOT have been autoplayed"
+
+
+def test_decide_autoplay_media_item_checked_media_auto_start(media_env, settings):
+    """
+    Test that a media item, with checked media, behaves
+    """
+    # GIVEN: A media service item and media auto start active
+    mocked_service_item = MagicMock()
+    mocked_service_item.is_media.return_value = True
+
+    settings.setValue('media/media auto start', QtCore.Qt.CheckState.Checked)
+    mocked_service_item.will_auto_start = False
+
+    mocked_controller = MagicMock()
+
+    # WHEN: decide_autoplay() is called
+    media_env.media_controller.decide_autoplay(mocked_service_item, mocked_controller)
+
+    # THEN: Autoplay will obey the following
+    assert media_env.media_controller.will_autoplay_media is True, "The Media should have been autoplayed"
+
+
 def test_decide_autoplay_no_media_unchecked_media_auto_start_no_autoplay_background_audio(media_env, settings):
     """
     Test that no media, with unchecked media auto start and unchecked auto-play background audio, behaves
     """
     # GIVEN: A service item that has no linked media and media auto start inactive
     mocked_service_item = MagicMock()
+    mocked_service_item.is_media.return_value = False
     mocked_service_item.requires_media.return_value = False
 
     settings.setValue('media/media auto start', QtCore.Qt.CheckState.Unchecked)
@@ -864,13 +905,17 @@ def test_decide_autoplay_no_media_unchecked_media_auto_start_no_autoplay_backgro
     assert media_env.media_controller.will_autoplay_media is False, "The Media should NOT have been autoplayed"
 
 
-def test_decide_autoplay_media_unchecked_media_auto_start_no_autoplay_background_audio(media_env, settings):
+def test_decide_autoplay_background_video_unchecked_media_auto_start(media_env, settings):
     """
-    Test that media, with unchecked media auto start and unchecked auto-play background audio, behaves
+    Test that background video, with unchecked media auto start, behaves
     """
     # GIVEN: A service item that has linked media and media auto start inactive
     mocked_service_item = MagicMock()
-    mocked_service_item.requires_media.return_value = True
+    mocked_service_item.is_media.return_value = False
+    mocked_service_item.requires_audio.return_value = False
+    mocked_service_item.requires_video.return_value = True
+    mocked_service_item.requires_media.return_value = mocked_service_item.requires_audio.return_value or \
+        mocked_service_item.requires_video.return_value
 
     settings.setValue('media/media auto start', QtCore.Qt.CheckState.Unchecked)
     mocked_service_item.will_auto_start = False
@@ -880,16 +925,20 @@ def test_decide_autoplay_media_unchecked_media_auto_start_no_autoplay_background
     # WHEN: decide_autoplay() is called
     media_env.media_controller.decide_autoplay(mocked_service_item, mocked_controller)
     # THEN: Autoplay will obey the following
-    assert media_env.media_controller.will_autoplay_media is False, "The Media should NOT have been autoplayed"
+    assert media_env.media_controller.will_autoplay_media is False, "The Video should NOT have been autoplayed"
 
 
-def test_decide_autoplay_media_checked_media_auto_start_no_autoplay_background_audio(media_env, settings):
+def test_decide_autoplay_background_audio_no_autoplay_background_audio(media_env, settings):
     """
-    Test that media, with checked media auto start and unchecked auto-play background audio, behaves
+    Test that background audio, unchecked auto-play background audio, behaves
     """
-    # GIVEN: A service item that has linked media and media auto start active
+    # GIVEN: A service item that has backdground audio and media auto start active
     mocked_service_item = MagicMock()
-    mocked_service_item.requires_media.return_value = True
+    mocked_service_item.is_media.return_value = False
+    mocked_service_item.requires_audio.return_value = True
+    mocked_service_item.requires_video.return_value = False
+    mocked_service_item.requires_media.return_value = mocked_service_item.requires_audio.return_value or \
+        mocked_service_item.requires_video.return_value
 
     settings.setValue('media/media auto start', QtCore.Qt.CheckState.Checked)
     mocked_service_item.will_auto_start = False
@@ -899,16 +948,20 @@ def test_decide_autoplay_media_checked_media_auto_start_no_autoplay_background_a
     # WHEN: decide_autoplay() is called
     media_env.media_controller.decide_autoplay(mocked_service_item, mocked_controller)
     # THEN: Autoplay will obey the following
-    assert media_env.media_controller.will_autoplay_media is True, "The Media should have been autoplayed"
+    assert media_env.media_controller.will_autoplay_media is False, "The Audio should NOT have been autoplayed"
 
 
-def test_decide_autoplay_media_unchecked_auto_start_autoplay_background_audio(media_env, settings):
+def test_decide_autoplay_background_audio_media_unchecked_auto_start_autoplay_background_audio(media_env, settings):
     """
-    Test that no media, with unchecked media auto start and checked auto-play background audio, behaves
+    Test that background audio, with unchecked media auto start and checked auto-play background audio, behaves
     """
-    # GIVEN: A service item that has no linked media and auto-play background audio inactive
+    # GIVEN: A service item that has background audio and auto-play background audio active
     mocked_service_item = MagicMock()
-    mocked_service_item.requires_media.return_value = True
+    mocked_service_item.is_media.return_value = False
+    mocked_service_item.requires_audio.return_value = True
+    mocked_service_item.requires_video.return_value = False
+    mocked_service_item.requires_media.return_value = mocked_service_item.requires_audio.return_value or \
+        mocked_service_item.requires_video.return_value
 
     settings.setValue('media/media auto start', QtCore.Qt.CheckState.Unchecked)
     mocked_service_item.will_auto_start = True
@@ -921,13 +974,17 @@ def test_decide_autoplay_media_unchecked_auto_start_autoplay_background_audio(me
     assert media_env.media_controller.will_autoplay_media is True, "The Audio should have been autoplayed"
 
 
-def test_decide_autoplay_media_checked_auto_start_autoplay_background_audio(media_env, settings):
+def test_decide_autoplay_background_audio_media_checked_auto_start_autoplay_background_audio(media_env, settings):
     """
-    Test that media, with checked media auto start and checked auto-play background audio, behaves
+    Test that background audio, with checked media auto start and checked auto-play background audio, behaves
     """
     # GIVEN: A service item that has linked media and auto-play background audio active
     mocked_service_item = MagicMock()
-    mocked_service_item.requires_media.return_value = True
+    mocked_service_item.is_media.return_value = False
+    mocked_service_item.requires_audio.return_value = True
+    mocked_service_item.requires_video.return_value = False
+    mocked_service_item.requires_media.return_value = mocked_service_item.requires_audio.return_value or \
+        mocked_service_item.requires_video.return_value
 
     settings.setValue('media/media auto start', QtCore.Qt.CheckState.Checked)
     mocked_service_item.will_auto_start = True
