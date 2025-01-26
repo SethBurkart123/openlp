@@ -9,7 +9,6 @@ default:
 variables:
   PYTHON_VERSION_WINDOWS_AND_MACOS: "3.11"
   IMAGE_BASE: $CI_REGISTRY/openlp/runners
-  OPENLP_HOST: "new.openlp.io"
   PACKAGING_REPOSITORY_NAME: "packaging"
   PACKAGING_BRANCH_NAME: "master"
   PACKAGING_DIRECTORY_NAME: "$PACKAGING_REPOSITORY_NAME-$PACKAGING_BRANCH_NAME"
@@ -311,17 +310,9 @@ deploy-installers-for-windows-and-macos:
   stage: deploy
   image: $IMAGE_BASE/ssh
   script:
-    - mkdir -p ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - eval $(ssh-agent -s)
-    - ssh-add ~/.ssh/id_rsa
-    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-    - ssh openlp@$OPENLP_HOST "mkdir -p /home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG"
-    - cd dist
-    - scp *.exe openlp@$OPENLP_HOST:/home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG/
-    - scp *.msi openlp@$OPENLP_HOST:/home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG/
-    - scp *.dmg openlp@$OPENLP_HOST:/home/openlp/sites/get.openlp.org/www/$CI_COMMIT_TAG/
+    - python scripts/upload-build.py dist/*.exe
+    - python scripts/upload-build.py dist/*.msi
+    - python scripts/upload-build.py dist/*.dmg
   rules:
     - if: $CI_COMMIT_TAG
 
