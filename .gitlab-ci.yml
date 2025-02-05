@@ -104,7 +104,7 @@ test-arch:
       pysword
       pytest
       pytest-qt
-      python-vlc
+      python-vlc==3.0.18122
       QDarkStyle
       qrcode
       QtAwesome
@@ -199,7 +199,7 @@ test-windows:
     - "# Enabling feature that doesn't let Chocolatey ask for confirmation"
     - choco feature enable --name='allowGlobalConfirmation'
     - "# Installing VLC"
-    - choco install vlc
+    - choco install vlc --version=3.0.18
     - $pythonVersion = $env:PYTHON_VERSION_WINDOWS_AND_MACOS
     - "# Installing Python $pythonVersion"
     - $pythonVersion = $pythonVersion.Replace('.', '')
