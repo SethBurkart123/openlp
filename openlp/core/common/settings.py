@@ -390,6 +390,7 @@ class Settings(QtCore.QSettings):
         'images/db database': '',
         'images/last directory': None,
         'images/status': PluginStatus.Inactive,
+        'mcp/status': PluginStatus.Inactive,
         'media/status': PluginStatus.Inactive,
         'media/media files': [],
         'media/last directory': None,
