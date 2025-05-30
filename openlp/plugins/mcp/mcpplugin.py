@@ -289,23 +289,100 @@ class MCPWorker(QtCore.QObject):
     @QtCore.Slot(str, str)
     def add_media(self, file_path, title):
         try:
-            media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
-            if not media_plugin or not media_plugin.is_active():
-                self.operation_completed.emit("Media plugin not available")
+            file_path = Path(file_path)
+            
+            # Check if file exists
+            if not file_path.exists():
+                self.operation_completed.emit(f"Error: File '{file_path}' not found")
                 return
             
-            service_item = ServiceItem(media_plugin)
-            service_item.title = title or Path(file_path).name
-            service_item.name = 'media'
-            service_item.service_item_type = ServiceItemType.Command
-            service_item.add_icon()  # Add the appropriate icon
-            service_item.add_from_command(str(Path(file_path).parent), Path(file_path).name, 
-                                        UiIcons().clapperboard)
+            # Detect media type based on file extension
+            extension = file_path.suffix.lower()
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.svg'}
+            video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp'}
+            audio_extensions = {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'}
             
-            service_manager = Registry().get('service_manager')
-            service_manager.add_service_item(service_item)
-            service_manager.repaint_service_list(-1, -1)  # Refresh the UI
-            self.operation_completed.emit(f"Media '{service_item.title}' added to service")
+            is_image = extension in image_extensions
+            is_video = extension in video_extensions
+            is_audio = extension in audio_extensions
+            
+            if is_image:
+                # Handle images using the images plugin
+                images_plugin = Registry().get('plugin_manager').get_plugin_by_name('images')
+                if not images_plugin or not images_plugin.is_active():
+                    self.operation_completed.emit("Images plugin not available")
+                    return
+                
+                service_item = ServiceItem(images_plugin)
+                service_item.title = title or file_path.name
+                service_item.name = 'images'
+                service_item.add_icon()
+                
+                # Use add_from_image for proper image handling
+                service_item.add_from_image(file_path, file_path.name)
+                
+                # IMPORTANT: add_from_image doesn't set sha256_file_hash on the ServiceItem itself,
+                # but the service saving logic needs it. We need to set it manually.
+                from openlp.core.common import sha256_file_hash
+                service_item.sha256_file_hash = sha256_file_hash(file_path)
+                
+                # Add image capabilities
+                from openlp.core.lib.serviceitem import ItemCapabilities
+                service_item.add_capability(ItemCapabilities.CanMaintain)
+                service_item.add_capability(ItemCapabilities.CanPreview)
+                service_item.add_capability(ItemCapabilities.CanLoop)
+                service_item.add_capability(ItemCapabilities.CanAppend)
+                service_item.add_capability(ItemCapabilities.CanEditTitle)
+                service_item.add_capability(ItemCapabilities.HasThumbnails)
+                service_item.add_capability(ItemCapabilities.ProvidesOwnTheme)
+                
+                service_manager = Registry().get('service_manager')
+                service_manager.add_service_item(service_item)
+                service_manager.repaint_service_list(-1, -1)
+                self.operation_completed.emit(f"Image '{service_item.title}' added to service")
+                
+            elif is_video or is_audio:
+                # Handle videos/audio using the media plugin
+                media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
+                if not media_plugin or not media_plugin.is_active():
+                    self.operation_completed.emit("Media plugin not available")
+                    return
+                
+                service_item = ServiceItem(media_plugin)
+                service_item.title = title or file_path.name
+                service_item.name = 'media'
+                service_item.service_item_type = ServiceItemType.Command
+                service_item.add_icon()
+                
+                # Use add_from_command for video/audio files
+                service_item.add_from_command(str(file_path.parent), file_path.name, UiIcons().clapperboard)
+                
+                # Set processor and add media capabilities
+                service_item.processor = 'qt6'
+                from openlp.core.lib.serviceitem import ItemCapabilities
+                service_item.add_capability(ItemCapabilities.CanAutoStartForLive)
+                service_item.add_capability(ItemCapabilities.CanEditTitle)
+                service_item.add_capability(ItemCapabilities.RequiresMedia)
+                
+                # Set media length if possible
+                try:
+                    media_controller = Registry().get('media_controller')
+                    if media_controller:
+                        media_length = media_controller.media_length(str(file_path))
+                        if media_length:
+                            service_item.set_media_length(media_length)
+                except Exception as e:
+                    log.debug(f"Could not get media length: {e}")
+                
+                service_manager = Registry().get('service_manager')
+                service_manager.add_service_item(service_item)
+                service_manager.repaint_service_list(-1, -1)
+                
+                media_type = "video" if is_video else "audio"
+                self.operation_completed.emit(f"{media_type.capitalize()} '{service_item.title}' added to service")
+            else:
+                self.operation_completed.emit(f"Unsupported media format: {extension}. Supported formats: images ({', '.join(sorted(image_extensions))}), videos ({', '.join(sorted(video_extensions))}), audio ({', '.join(sorted(audio_extensions))})")
+                
         except Exception as e:
             self.operation_completed.emit(f"Error adding media: {str(e)}")
     
@@ -504,18 +581,96 @@ class MCPWorker(QtCore.QObject):
                 elif item_type == 'media':
                     file_path = item_data.get('file_path')
                     if file_path:
-                        # Add media directly without triggering individual UI refreshes
-                        media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
-                        if media_plugin and media_plugin.is_active():
-                            service_item = ServiceItem(media_plugin)
-                            service_item.title = title or Path(file_path).name
-                            service_item.name = 'media'
-                            service_item.service_item_type = ServiceItemType.Command
-                            service_item.add_icon()  # Add the appropriate icon
-                            service_item.add_from_command(str(Path(file_path).parent), Path(file_path).name, 
-                                                        UiIcons().clapperboard)
-                            service_manager.add_service_item(service_item)
-                            items_added.append(f"Media '{service_item.title}'")
+                        # Use the improved media handling logic
+                        try:
+                            file_path_obj = Path(file_path)
+                            
+                            # Check if file exists
+                            if not file_path_obj.exists():
+                                items_added.append(f"⚠ Media '{title}' (file not found: {file_path})")
+                                continue
+                            
+                            # Detect media type based on file extension
+                            extension = file_path_obj.suffix.lower()
+                            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.svg'}
+                            video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp'}
+                            audio_extensions = {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'}
+                            
+                            is_image = extension in image_extensions
+                            is_video = extension in video_extensions
+                            is_audio = extension in audio_extensions
+                            
+                            if is_image:
+                                # Handle images using the images plugin
+                                images_plugin = Registry().get('plugin_manager').get_plugin_by_name('images')
+                                if images_plugin and images_plugin.is_active():
+                                    service_item = ServiceItem(images_plugin)
+                                    service_item.title = title or file_path_obj.name
+                                    service_item.name = 'images'
+                                    service_item.add_icon()
+                                    
+                                    # Use add_from_image for proper image handling
+                                    service_item.add_from_image(file_path_obj, file_path_obj.name)
+                                    
+                                    # IMPORTANT: add_from_image doesn't set sha256_file_hash on the ServiceItem itself,
+                                    # but the service saving logic needs it. We need to set it manually.
+                                    from openlp.core.common import sha256_file_hash
+                                    service_item.sha256_file_hash = sha256_file_hash(file_path_obj)
+                                    
+                                    # Add image capabilities
+                                    from openlp.core.lib.serviceitem import ItemCapabilities
+                                    service_item.add_capability(ItemCapabilities.CanMaintain)
+                                    service_item.add_capability(ItemCapabilities.CanPreview)
+                                    service_item.add_capability(ItemCapabilities.CanLoop)
+                                    service_item.add_capability(ItemCapabilities.CanAppend)
+                                    service_item.add_capability(ItemCapabilities.CanEditTitle)
+                                    service_item.add_capability(ItemCapabilities.HasThumbnails)
+                                    service_item.add_capability(ItemCapabilities.ProvidesOwnTheme)
+                                    
+                                    service_manager.add_service_item(service_item)
+                                    items_added.append(f"✓ Image '{service_item.title}'")
+                                else:
+                                    items_added.append(f"⚠ Image '{title}' (images plugin unavailable)")
+                                    
+                            elif is_video or is_audio:
+                                # Handle videos/audio using the media plugin
+                                media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
+                                if media_plugin and media_plugin.is_active():
+                                    service_item = ServiceItem(media_plugin)
+                                    service_item.title = title or file_path_obj.name
+                                    service_item.name = 'media'
+                                    service_item.service_item_type = ServiceItemType.Command
+                                    service_item.add_icon()
+                                    
+                                    # Use add_from_command for video/audio files
+                                    service_item.add_from_command(str(file_path_obj.parent), file_path_obj.name, UiIcons().clapperboard)
+                                    
+                                    # Set processor and add media capabilities
+                                    service_item.processor = 'qt6'
+                                    from openlp.core.lib.serviceitem import ItemCapabilities
+                                    service_item.add_capability(ItemCapabilities.CanAutoStartForLive)
+                                    service_item.add_capability(ItemCapabilities.CanEditTitle)
+                                    service_item.add_capability(ItemCapabilities.RequiresMedia)
+                                    
+                                    # Set media length if possible
+                                    try:
+                                        media_controller = Registry().get('media_controller')
+                                        if media_controller:
+                                            media_length = media_controller.media_length(str(file_path_obj))
+                                            if media_length:
+                                                service_item.set_media_length(media_length)
+                                    except Exception as e:
+                                        log.debug(f"Could not get media length: {e}")
+                                    
+                                    service_manager.add_service_item(service_item)
+                                    media_type = "video" if is_video else "audio"
+                                    items_added.append(f"✓ {media_type.capitalize()} '{service_item.title}'")
+                                else:
+                                    items_added.append(f"⚠ Media '{title}' (media plugin unavailable)")
+                            else:
+                                items_added.append(f"⚠ Media '{title}' (unsupported format: {extension})")
+                        except Exception as e:
+                            items_added.append(f"⚠ Media '{title}' (error: {str(e)})")
             
             # Refresh UI once at the end
             service_manager.repaint_service_list(-1, -1)
@@ -733,6 +888,44 @@ class MCPPlugin(Plugin):
             """Add a media file to the current service."""
             self.worker.add_media_requested.emit(file_path, title or "")
             return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def add_sample_image() -> str:
+            """Add the sample image.jpg to the service for testing."""
+            import os
+            sample_path = os.path.join(os.getcwd(), "image.jpg")
+            self.worker.add_media_requested.emit(sample_path, "Sample Image")
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def add_sample_video() -> str:
+            """Add the sample video.mp4 to the service for testing."""
+            import os
+            sample_path = os.path.join(os.getcwd(), "video.mp4")
+            self.worker.add_media_requested.emit(sample_path, "Sample Video")
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def test_media_types() -> str:
+            """Test adding both sample media files to demonstrate image vs video handling."""
+            import os
+            cwd = os.getcwd()
+            
+            # Create a new service first
+            self.worker.create_service_requested.emit()
+            result1 = self.worker.wait_for_result()
+            
+            # Add the image
+            image_path = os.path.join(cwd, "image.jpg")
+            self.worker.add_media_requested.emit(image_path, "Test Image")
+            result2 = self.worker.wait_for_result()
+            
+            # Add the video
+            video_path = os.path.join(cwd, "video.mp4")
+            self.worker.add_media_requested.emit(video_path, "Test Video")
+            result3 = self.worker.wait_for_result()
+            
+            return f"Service created and media added:\n1. {result1}\n2. {result2}\n3. {result3}"
 
     def _register_slide_tools(self):
         """
@@ -871,21 +1064,99 @@ class MCPPlugin(Plugin):
 
     def _add_media_directly(self, file_path: str, title: str = None):
         """Add a media file directly (called from within main thread context)."""
-        media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
-        if not media_plugin or not media_plugin.is_active():
-            return "Media plugin not available"
-        
-        service_item = ServiceItem()
-        service_item.title = title or Path(file_path).name
-        service_item.name = 'media'
-        service_item.service_item_type = ServiceItemType.Command
-        service_item.add_from_command(str(Path(file_path).parent), Path(file_path).name, 
-                                    UiIcons().clapperboard)
-        
-        service_manager = Registry().get('service_manager')
-        service_manager.add_service_item(service_item)
-        
-        return f"Media '{service_item.title}' added to service"
+        try:
+            file_path = Path(file_path)
+            
+            # Check if file exists
+            if not file_path.exists():
+                return f"Error: File '{file_path}' not found"
+            
+            # Detect media type based on file extension
+            extension = file_path.suffix.lower()
+            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.svg'}
+            video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp'}
+            audio_extensions = {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'}
+            
+            is_image = extension in image_extensions
+            is_video = extension in video_extensions
+            is_audio = extension in audio_extensions
+            
+            if is_image:
+                # Handle images using the images plugin
+                images_plugin = Registry().get('plugin_manager').get_plugin_by_name('images')
+                if not images_plugin or not images_plugin.is_active():
+                    return "Images plugin not available"
+                
+                service_item = ServiceItem(images_plugin)
+                service_item.title = title or file_path.name
+                service_item.name = 'images'
+                service_item.add_icon()
+                
+                # Use add_from_image for proper image handling
+                service_item.add_from_image(file_path, file_path.name)
+                
+                # IMPORTANT: add_from_image doesn't set sha256_file_hash on the ServiceItem itself,
+                # but the service saving logic needs it. We need to set it manually.
+                from openlp.core.common import sha256_file_hash
+                service_item.sha256_file_hash = sha256_file_hash(file_path)
+                
+                # Add image capabilities
+                from openlp.core.lib.serviceitem import ItemCapabilities
+                service_item.add_capability(ItemCapabilities.CanMaintain)
+                service_item.add_capability(ItemCapabilities.CanPreview)
+                service_item.add_capability(ItemCapabilities.CanLoop)
+                service_item.add_capability(ItemCapabilities.CanAppend)
+                service_item.add_capability(ItemCapabilities.CanEditTitle)
+                service_item.add_capability(ItemCapabilities.HasThumbnails)
+                service_item.add_capability(ItemCapabilities.ProvidesOwnTheme)
+                
+                service_manager = Registry().get('service_manager')
+                service_manager.add_service_item(service_item)
+                
+                return f"Image '{service_item.title}' added to service"
+                
+            elif is_video or is_audio:
+                # Handle videos/audio using the media plugin
+                media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
+                if not media_plugin or not media_plugin.is_active():
+                    return "Media plugin not available"
+                
+                service_item = ServiceItem(media_plugin)
+                service_item.title = title or file_path.name
+                service_item.name = 'media'
+                service_item.service_item_type = ServiceItemType.Command
+                service_item.add_icon()
+                
+                # Use add_from_command for video/audio files
+                service_item.add_from_command(str(file_path.parent), file_path.name, UiIcons().clapperboard)
+                
+                # Set processor and add media capabilities
+                service_item.processor = 'qt6'
+                from openlp.core.lib.serviceitem import ItemCapabilities
+                service_item.add_capability(ItemCapabilities.CanAutoStartForLive)
+                service_item.add_capability(ItemCapabilities.CanEditTitle)
+                service_item.add_capability(ItemCapabilities.RequiresMedia)
+                
+                # Set media length if possible
+                try:
+                    media_controller = Registry().get('media_controller')
+                    if media_controller:
+                        media_length = media_controller.media_length(str(file_path))
+                        if media_length:
+                            service_item.set_media_length(media_length)
+                except Exception as e:
+                    log.debug(f"Could not get media length: {e}")
+                
+                service_manager = Registry().get('service_manager')
+                service_manager.add_service_item(service_item)
+                
+                media_type = "video" if is_video else "audio"
+                return f"{media_type.capitalize()} '{service_item.title}' added to service"
+            else:
+                return f"Unsupported media format: {extension}. Supported formats: images ({', '.join(sorted(image_extensions))}), videos ({', '.join(sorted(video_extensions))}), audio ({', '.join(sorted(audio_extensions))})"
+                
+        except Exception as e:
+            return f"Error adding media: {str(e)}"
 
     def set_plugin_text_strings(self):
         """
