@@ -242,41 +242,21 @@ class MCPWorker(QtCore.QObject):
                         self.operation_completed.emit(match_info)
                     else:
                         # generate_slide_data failed, fall back to placeholder
-                        raise Exception(f"Failed to generate slides for song '{song.title}' (ID: {song.id})")
+                        service_manager = Registry().get('service_manager')
+                        self._create_song_placeholder(songs_plugin, title, lyrics, service_manager)
+                        service_manager.repaint_service_list(-1, -1)
+                        self.operation_completed.emit(f"⚠ Song '{title}' found but failed to load - added placeholder")
                         
                 except Exception as slide_error:
                     # If there's an error with the database song, fall back to placeholder
-                    service_item = ServiceItem(songs_plugin)
-                    service_item.title = title
-                    service_item.name = 'songs'
-                    service_item.service_item_type = ServiceItemType.Text
-                    service_item.add_icon()
-                    service_item.add_from_text(f"Song: {title}\n\n(Found in database but failed to load: {str(slide_error)})\n\nPlease check the song data.")
-                    
                     service_manager = Registry().get('service_manager')
-                    service_manager.add_service_item(service_item)
+                    self._create_song_placeholder(songs_plugin, title, lyrics, service_manager)
                     service_manager.repaint_service_list(-1, -1)
-                    
                     self.operation_completed.emit(f"⚠ Song '{title}' found but failed to load: {str(slide_error)} - added placeholder")
             else:
                 # No existing song found, create a simple service item with clear feedback
-                service_item = ServiceItem(songs_plugin)
-                service_item.title = title
-                service_item.name = 'songs'
-                service_item.service_item_type = ServiceItemType.Text
-                service_item.add_icon()  # Add the appropriate icon
-                
-                if lyrics:
-                    verses = lyrics.split('\n\n')
-                    for verse in verses:
-                        if verse.strip():
-                            service_item.add_from_text(verse.strip())
-                else:
-                    # Add placeholder content so the song isn't empty
-                    service_item.add_from_text(f"Song: {title}\n\n(Not found in song database)\n\nPlease add lyrics or check the title spelling.")
-                
                 service_manager = Registry().get('service_manager')
-                service_manager.add_service_item(service_item)
+                self._create_song_placeholder(songs_plugin, title, lyrics, service_manager)
                 service_manager.repaint_service_list(-1, -1)  # Refresh the UI
                 
                 # Give clear feedback about what was searched
@@ -424,11 +404,13 @@ class MCPWorker(QtCore.QObject):
                         from openlp.plugins.songs.lib import clean_string
                         
                         existing_songs = []
+                        search_attempts = []
                         
                         # 1. Try exact title match first
                         exact_matches = songs_plugin.manager.get_all_objects(Song, Song.title == title)
                         if exact_matches:
                             existing_songs = exact_matches
+                            search_attempts.append(f"exact title match")
                         
                         # 2. Try search_title contains our cleaned title
                         if not existing_songs:
@@ -436,6 +418,7 @@ class MCPWorker(QtCore.QObject):
                             search_matches = songs_plugin.manager.get_all_objects(Song, Song.search_title.like(f'%{search_title}%'))
                             if search_matches:
                                 existing_songs = search_matches
+                                search_attempts.append(f"search_title contains '{search_title}'")
                         
                         # 3. Try partial title search (remove common words)
                         if not existing_songs:
@@ -447,6 +430,7 @@ class MCPWorker(QtCore.QObject):
                                 partial_matches = songs_plugin.manager.get_all_objects(Song, Song.search_title.like(f'%{simplified_clean}%'))
                                 if partial_matches:
                                     existing_songs = partial_matches
+                                    search_attempts.append(f"simplified search '{simplified_clean}'")
                         
                         # 4. Try word-by-word search for longer titles
                         if not existing_songs and len(title.split()) > 2:
@@ -457,6 +441,7 @@ class MCPWorker(QtCore.QObject):
                                 word_matches = songs_plugin.manager.get_all_objects(Song, and_(*word_conditions))
                                 if word_matches:
                                     existing_songs = word_matches
+                                    search_attempts.append(f"word search for: {', '.join(words)}")
                         
                         if existing_songs:
                             # Found existing song(s), use the first match
@@ -475,47 +460,36 @@ class MCPWorker(QtCore.QObject):
                                 
                                 # Generate slide data
                                 if media_item.generate_slide_data(service_item, item=mock_item):
-                                    service_manager = Registry().get('service_manager')
                                     service_manager.add_service_item(service_item)
-                                    service_manager.repaint_service_list(-1, -1)  # Refresh the UI
-                                    
-                                    # Give detailed feedback about how the song was found
-                                    match_info = f"✓ Found '{song.title}' in database"
-                                    if len(existing_songs) > 1:
-                                        match_info += f" ({len(existing_songs)} matches, used first)"
-                                    match_info += f" via {search_attempts[-1]}"
-                                    self.operation_completed.emit(match_info)
                                     items_added.append(f"✓ Song '{song.title}' (found in database)")
                                 else:
-                                    # generate_slide_data failed, fall back to placeholder
-                                    raise Exception(f"Failed to generate slides for song '{song.title}' (ID: {song.id})")
+                                    # generate_slide_data failed, create placeholder instead
+                                    self._create_song_placeholder(songs_plugin, title, lyrics, service_manager)
+                                    items_added.append(f"⚠ Song '{title}' (found but failed to load - placeholder added)")
                                     
                             except Exception as slide_error:
                                 # If there's an error with the database song, fall back to placeholder
-                                service_item = ServiceItem(songs_plugin)
-                                service_item.title = title
-                                service_item.service_item_type = ServiceItemType.Text
-                                service_item.add_icon()
-                                service_item.add_from_text(f"Song: {title}\n\n(Found in database but failed to load: {str(slide_error)})\n\nPlease check the song data.")
-                                service_manager.add_service_item(service_item)
-                                items_added.append(f"⚠ Song '{title}' (found but failed to load)")
+                                self._create_song_placeholder(songs_plugin, title, lyrics, service_manager)
+                                items_added.append(f"⚠ Song '{title}' (found but failed to load - placeholder added)")
                         else:
                             # No existing song found, create a simple service item
-                            service_item = ServiceItem(songs_plugin)
-                            service_item.title = title
-                            service_item.name = 'songs'
-                            service_item.service_item_type = ServiceItemType.Text
-                            service_item.add_icon()  # Add the appropriate icon
-                            if lyrics:
-                                verses = lyrics.split('\n\n')
-                                for verse in verses:
-                                    if verse.strip():
-                                        service_item.add_from_text(verse.strip())
-                            else:
-                                # Add placeholder content so the song isn't empty
-                                service_item.add_from_text(f"Song: {title}\n\n(Not found in song database)\n\nPlease add lyrics or check the title spelling.")
-                            service_manager.add_service_item(service_item)
+                            self._create_song_placeholder(songs_plugin, title, lyrics, service_manager)
                             items_added.append(f"⚠ Song '{title}' (not found - placeholder added)")
+                    else:
+                        # Songs plugin not available, create a basic custom slide
+                        custom_plugin = Registry().get('plugin_manager').get_plugin_by_name('custom')
+                        service_item = ServiceItem(custom_plugin)
+                        service_item.title = f"Song: {title}"
+                        service_item.name = 'custom'
+                        service_item.service_item_type = ServiceItemType.Text
+                        service_item.add_icon()
+                        if lyrics:
+                            service_item.add_from_text(f"Song: {title}\n{f'by {author}' if author else ''}\n\n{lyrics}")
+                        else:
+                            service_item.add_from_text(f"Song: {title}\n{f'by {author}' if author else ''}")
+                        service_manager.add_service_item(service_item)
+                        items_added.append(f"⚠ Song '{title}' (songs plugin unavailable)")
+                        
                 elif item_type == 'custom':
                     # Add custom slide directly without triggering individual UI refreshes
                     custom_plugin = Registry().get('plugin_manager').get_plugin_by_name('custom')
@@ -548,6 +522,24 @@ class MCPWorker(QtCore.QObject):
             self.operation_completed.emit(f"Service created with {len(service_structure)} items: " + ", ".join(items_added))
         except Exception as e:
             self.operation_completed.emit(f"Error creating service: {str(e)}")
+
+    def _create_song_placeholder(self, songs_plugin, title, lyrics, service_manager):
+        """Helper method to create a song placeholder when database song fails to load."""
+        service_item = ServiceItem(songs_plugin)
+        service_item.title = title
+        service_item.name = 'songs'
+        service_item.service_item_type = ServiceItemType.Text
+        service_item.add_icon()
+        
+        if lyrics:
+            verses = lyrics.split('\n\n')
+            for verse in verses:
+                if verse.strip():
+                    service_item.add_from_text(verse.strip())
+        else:
+            service_item.add_from_text(f"Song: {title}\n\n(Lyrics not available)\n\nPlease add lyrics or check the song data.")
+        
+        service_manager.add_service_item(service_item)
 
 
 class MCPPlugin(Plugin):
