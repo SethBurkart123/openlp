@@ -1,5 +1,0 @@
-Vendor Directory
-================
-
-Do not delete this directory, it is used on Mac OS to place Pyro4 and serpent for use with Impress.
-

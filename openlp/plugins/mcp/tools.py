@@ -57,6 +57,8 @@ class MCPToolsManager:
         self._register_media_tools()
         self._register_slide_tools()
         self._register_theme_tools()
+        self._register_theme_management_tools()
+        self._register_per_item_theme_tools()
         self._register_email_tools()
     
     def _register_service_tools(self):
@@ -181,6 +183,131 @@ class MCPToolsManager:
         def set_service_theme(theme_name: str) -> str:
             """Set the theme for the current service."""
             self.worker.set_theme_requested.emit(theme_name)
+            return self.worker.wait_for_result()
+
+    def _register_theme_management_tools(self):
+        """Register tools for theme creation and management."""
+        @self.mcp_server.tool()
+        def create_theme_with_properties(
+            theme_name: str,
+            background_type: str = "solid",  # solid, gradient, image, transparent, video
+            background_color: str = "#000000",
+            background_start_color: str = "#000000", 
+            background_end_color: str = "#000000",
+            background_direction: str = "vertical",  # vertical, horizontal, circular
+            background_image_path: str = None,
+            font_main_name: str = "Arial",
+            font_main_size: int = 40,
+            font_main_color: str = "#FFFFFF",
+            font_main_bold: bool = False,
+            font_main_italics: bool = False,
+            font_main_shadow: bool = True,
+            font_main_shadow_color: str = "#000000",
+            font_main_shadow_size: int = 5,
+            font_main_outline: bool = False,
+            font_main_outline_color: str = "#000000",
+            font_main_outline_size: int = 2,
+            font_footer_name: str = "Arial",
+            font_footer_size: int = 12,
+            font_footer_color: str = "#FFFFFF"
+        ) -> str:
+            """Create a new theme with specified properties."""
+            theme_data = {
+                'theme_name': theme_name,
+                'background_type': background_type,
+                'background_color': background_color,
+                'background_start_color': background_start_color,
+                'background_end_color': background_end_color,
+                'background_direction': background_direction,
+                'background_image_path': background_image_path,
+                'font_main_name': font_main_name,
+                'font_main_size': font_main_size,
+                'font_main_color': font_main_color,
+                'font_main_bold': font_main_bold,
+                'font_main_italics': font_main_italics,
+                'font_main_shadow': font_main_shadow,
+                'font_main_shadow_color': font_main_shadow_color,
+                'font_main_shadow_size': font_main_shadow_size,
+                'font_main_outline': font_main_outline,
+                'font_main_outline_color': font_main_outline_color,
+                'font_main_outline_size': font_main_outline_size,
+                'font_footer_name': font_footer_name,
+                'font_footer_size': font_footer_size,
+                'font_footer_color': font_footer_color
+            }
+            self.worker.create_theme_requested.emit(theme_data)
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def get_theme_details(theme_name: str) -> str:
+            """Get details of an existing theme."""
+            self.worker.get_theme_details_requested.emit(theme_name)
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def update_theme_properties(
+            theme_name: str,
+            background_type: str = None,
+            background_color: str = None,
+            background_start_color: str = None,
+            background_end_color: str = None,
+            background_direction: str = None,
+            background_image_path: str = None,
+            font_main_name: str = None,
+            font_main_size: int = None,
+            font_main_color: str = None,
+            font_main_bold: bool = None,
+            font_main_italics: bool = None,
+            font_main_shadow: bool = None,
+            font_main_shadow_color: str = None,
+            font_main_shadow_size: int = None,
+            font_main_outline: bool = None,
+            font_main_outline_color: str = None,
+            font_main_outline_size: int = None,
+            font_footer_name: str = None,
+            font_footer_size: int = None,
+            font_footer_color: str = None
+        ) -> str:
+            """Update properties of an existing theme. Only specified properties will be changed."""
+            updates = {}
+            for key, value in locals().items():
+                if key != 'self' and key != 'theme_name' and key != 'updates' and value is not None:
+                    updates[key] = value
+            
+            update_data = {'theme_name': theme_name, 'updates': updates}
+            self.worker.update_theme_requested.emit(update_data)
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def delete_theme(theme_name: str) -> str:
+            """Delete a theme (cannot delete default theme)."""
+            self.worker.delete_theme_requested.emit(theme_name)
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def duplicate_theme(existing_theme_name: str, new_theme_name: str) -> str:
+            """Create a copy of an existing theme with a new name."""
+            self.worker.duplicate_theme_requested.emit(existing_theme_name, new_theme_name)
+            return self.worker.wait_for_result()
+
+    def _register_per_item_theme_tools(self):
+        """Register tools for per-item theme management."""
+        @self.mcp_server.tool()
+        def set_item_theme(item_index: int, theme_name: str) -> str:
+            """Set a theme for a specific service item by index. Use 'none' or empty string to clear the item's theme."""
+            self.worker.set_item_theme_requested.emit(item_index, theme_name)
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def get_item_theme(item_index: int) -> str:
+            """Get the theme information for a specific service item by index."""
+            self.worker.get_item_theme_requested.emit(item_index)
+            return self.worker.wait_for_result()
+        
+        @self.mcp_server.tool()
+        def clear_item_theme(item_index: int) -> str:
+            """Clear the theme for a specific service item (fall back to service/global theme)."""
+            self.worker.clear_item_theme_requested.emit(item_index)
             return self.worker.wait_for_result()
 
     def _register_email_tools(self):

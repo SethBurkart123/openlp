@@ -62,6 +62,18 @@ class MCPWorker(QtCore.QObject):
     set_theme_requested = QtCore.Signal(str)  # theme_name
     create_from_structure_requested = QtCore.Signal(object)  # service_structure
     
+    # Theme management signals
+    create_theme_requested = QtCore.Signal(object)  # theme_data
+    get_theme_details_requested = QtCore.Signal(str)  # theme_name
+    update_theme_requested = QtCore.Signal(object)  # update_data
+    delete_theme_requested = QtCore.Signal(str)  # theme_name
+    duplicate_theme_requested = QtCore.Signal(str, str)  # existing_theme_name, new_theme_name
+    
+    # Per-item theme management signals
+    set_item_theme_requested = QtCore.Signal(int, str)  # item_index, theme_name
+    get_item_theme_requested = QtCore.Signal(int)  # item_index
+    clear_item_theme_requested = QtCore.Signal(int)  # item_index
+    
     # Result signals
     operation_completed = QtCore.Signal(object)  # result
     
@@ -89,6 +101,18 @@ class MCPWorker(QtCore.QObject):
         self.list_themes_requested.connect(self.list_themes)
         self.set_theme_requested.connect(self.set_theme)
         self.create_from_structure_requested.connect(self.create_from_structure)
+        
+        # Connect theme management signals
+        self.create_theme_requested.connect(self.create_theme)
+        self.get_theme_details_requested.connect(self.get_theme_details)
+        self.update_theme_requested.connect(self.update_theme)
+        self.delete_theme_requested.connect(self.delete_theme)
+        self.duplicate_theme_requested.connect(self.duplicate_theme)
+        
+        # Connect per-item theme management signals
+        self.set_item_theme_requested.connect(self.set_item_theme)
+        self.get_item_theme_requested.connect(self.get_item_theme)
+        self.clear_item_theme_requested.connect(self.clear_item_theme)
         
         self.operation_completed.connect(self._handle_result)
         
@@ -629,4 +653,325 @@ class MCPWorker(QtCore.QObject):
                 log.debug('Live controller not available yet')
                 
         except Exception as e:
-            log.warning(f'Could not configure slide navigation: {e}') 
+            log.warning(f'Could not configure slide navigation: {e}')
+
+    # Theme Management Methods
+    @QtCore.Slot(object)
+    def create_theme(self, theme_data):
+        """Create a new theme with the specified properties."""
+        try:
+            from openlp.core.lib.theme import Theme, BackgroundType, BackgroundGradientType
+            from openlp.core.common.registry import Registry
+            
+            theme_name = theme_data['theme_name']
+            theme_manager = Registry().get('theme_manager')
+            
+            # Check if theme already exists
+            if theme_name in theme_manager.get_theme_names():
+                self.operation_completed.emit(f"Theme '{theme_name}' already exists")
+                return
+            
+            # Create new theme
+            theme = Theme()
+            theme.theme_name = theme_name
+            
+            # Set background properties
+            background_type = theme_data.get('background_type', 'solid')
+            if background_type == 'solid':
+                theme.background_type = BackgroundType.to_string(BackgroundType.Solid)
+                theme.background_color = theme_data.get('background_color', '#000000')
+            elif background_type == 'gradient':
+                theme.background_type = BackgroundType.to_string(BackgroundType.Gradient)
+                theme.background_start_color = theme_data.get('background_start_color', '#000000')
+                theme.background_end_color = theme_data.get('background_end_color', '#000000')
+                theme.background_direction = BackgroundGradientType.to_string(
+                    BackgroundGradientType.Vertical if theme_data.get('background_direction', 'vertical') == 'vertical'
+                    else BackgroundGradientType.Horizontal
+                )
+            elif background_type == 'image' and theme_data.get('background_image_path'):
+                theme.background_type = BackgroundType.to_string(BackgroundType.Image)
+                theme.background_source = theme_data['background_image_path']
+                theme.background_filename = theme_data['background_image_path']
+            
+            # Set font properties
+            theme.font_main_name = theme_data.get('font_main_name', 'Arial')
+            theme.font_main_size = theme_data.get('font_main_size', 40)
+            theme.font_main_color = theme_data.get('font_main_color', '#FFFFFF')
+            theme.font_main_bold = theme_data.get('font_main_bold', False)
+            theme.font_main_italics = theme_data.get('font_main_italics', False)
+            theme.font_main_outline = theme_data.get('font_main_outline', False)
+            theme.font_main_outline_color = theme_data.get('font_main_outline_color', '#000000')
+            theme.font_main_outline_size = theme_data.get('font_main_outline_size', 2)
+            theme.font_main_shadow = theme_data.get('font_main_shadow', True)
+            theme.font_main_shadow_color = theme_data.get('font_main_shadow_color', '#000000')
+            theme.font_main_shadow_size = theme_data.get('font_main_shadow_size', 5)
+            
+            # Set footer font properties
+            theme.font_footer_name = theme_data.get('font_footer_name', 'Arial')
+            theme.font_footer_size = theme_data.get('font_footer_size', 12)
+            theme.font_footer_color = theme_data.get('font_footer_color', '#FFFFFF')
+            
+            # Save the theme
+            theme_manager.save_theme(theme)
+            
+            # Generate preview and refresh UI
+            theme_manager.update_preview_images([theme_name])
+            
+            self.operation_completed.emit(f"Theme '{theme_name}' created successfully")
+            
+        except Exception as e:
+            self.operation_completed.emit(f"Error creating theme: {str(e)}")
+
+    @QtCore.Slot(str)
+    def get_theme_details(self, theme_name):
+        """Get detailed information about a theme."""
+        try:
+            from openlp.core.common.registry import Registry
+            
+            theme_manager = Registry().get('theme_manager')
+            theme_data = theme_manager.get_theme_data(theme_name)
+            
+            if not theme_data:
+                self.operation_completed.emit(f"Theme '{theme_name}' not found")
+                return
+            
+            details = {
+                'theme_name': theme_data.theme_name,
+                'background_type': theme_data.background_type,
+                'background_color': getattr(theme_data, 'background_color', 'N/A'),
+                'background_start_color': getattr(theme_data, 'background_start_color', 'N/A'),
+                'background_end_color': getattr(theme_data, 'background_end_color', 'N/A'),
+                'background_direction': getattr(theme_data, 'background_direction', 'N/A'),
+                'background_filename': str(getattr(theme_data, 'background_filename', 'N/A')),
+                'font_main_name': theme_data.font_main_name,
+                'font_main_size': theme_data.font_main_size,
+                'font_main_color': theme_data.font_main_color,
+                'font_main_bold': theme_data.font_main_bold,
+                'font_main_italics': theme_data.font_main_italics,
+                'font_main_outline': theme_data.font_main_outline,
+                'font_main_outline_color': theme_data.font_main_outline_color,
+                'font_main_outline_size': theme_data.font_main_outline_size,
+                'font_main_shadow': theme_data.font_main_shadow,
+                'font_main_shadow_color': theme_data.font_main_shadow_color,
+                'font_main_shadow_size': theme_data.font_main_shadow_size,
+                'font_footer_name': theme_data.font_footer_name,
+                'font_footer_size': theme_data.font_footer_size,
+                'font_footer_color': theme_data.font_footer_color,
+            }
+            
+            result = "Theme Details:\n" + "\n".join([f"{k}: {v}" for k, v in details.items()])
+            self.operation_completed.emit(result)
+            
+        except Exception as e:
+            self.operation_completed.emit(f"Error getting theme details: {str(e)}")
+
+    @QtCore.Slot(object)
+    def update_theme(self, theme_data):
+        """Update properties of an existing theme."""
+        try:
+            from openlp.core.common.registry import Registry
+            
+            theme_name = theme_data['theme_name']
+            theme_manager = Registry().get('theme_manager')
+            
+            # Get existing theme
+            theme = theme_manager.get_theme_data(theme_name)
+            if not theme:
+                self.operation_completed.emit(f"Theme '{theme_name}' not found")
+                return
+            
+            # Update only provided properties
+            updates = []
+            for key, value in theme_data.items():
+                if key != 'theme_name' and value is not None:
+                    if hasattr(theme, key):
+                        setattr(theme, key, value)
+                        updates.append(f"{key}: {value}")
+            
+            if updates:
+                # Save updated theme
+                theme_manager.save_theme(theme)
+                
+                # Generate preview and refresh UI
+                theme_manager.update_preview_images([theme_name])
+                
+                self.operation_completed.emit(f"Theme '{theme_name}' updated: {', '.join(updates)}")
+            else:
+                self.operation_completed.emit(f"No valid properties provided to update for theme '{theme_name}'")
+                
+        except Exception as e:
+            self.operation_completed.emit(f"Error updating theme: {str(e)}")
+
+    @QtCore.Slot(str)
+    def delete_theme(self, theme_name):
+        """Delete a theme."""
+        try:
+            from openlp.core.common.registry import Registry
+            
+            theme_manager = Registry().get('theme_manager')
+            
+            # Check if theme exists
+            if theme_name not in theme_manager.get_theme_names():
+                self.operation_completed.emit(f"Theme '{theme_name}' not found")
+                return
+            
+            # Check if it's the default theme or global theme
+            if theme_name == 'Default':
+                self.operation_completed.emit(f"Cannot delete the default theme 'Default'")
+                return
+                
+            # Check if it's currently set as the global theme
+            global_theme = theme_manager.global_theme
+            if theme_name == global_theme:
+                self.operation_completed.emit(f"Cannot delete the global theme '{theme_name}'. Please set a different global theme first.")
+                return
+            
+            # Delete the theme
+            theme_manager.delete_theme(theme_name)
+            
+            # Refresh the UI
+            theme_manager.load_themes()
+            
+            self.operation_completed.emit(f"Theme '{theme_name}' deleted successfully")
+            
+        except Exception as e:
+            self.operation_completed.emit(f"Error deleting theme: {str(e)}")
+
+    @QtCore.Slot(str, str)
+    def duplicate_theme(self, existing_theme_name, new_theme_name):
+        """Create a copy of an existing theme with a new name."""
+        try:
+            from openlp.core.common.registry import Registry
+            
+            theme_manager = Registry().get('theme_manager')
+            
+            # Check if source theme exists
+            if existing_theme_name not in theme_manager.get_theme_names():
+                self.operation_completed.emit(f"Source theme '{existing_theme_name}' not found")
+                return
+            
+            # Check if new theme name already exists
+            if new_theme_name in theme_manager.get_theme_names():
+                self.operation_completed.emit(f"Theme '{new_theme_name}' already exists")
+                return
+            
+            # Get source theme data
+            theme_data = theme_manager.get_theme_data(existing_theme_name)
+            
+            # Use OpenLP's built-in clone method which properly handles background images
+            theme_manager.clone_theme_data(theme_data, new_theme_name)
+            
+            self.operation_completed.emit(f"Theme '{existing_theme_name}' duplicated as '{new_theme_name}'")
+            
+        except Exception as e:
+            self.operation_completed.emit(f"Error duplicating theme: {str(e)}")
+
+    # Per-Item Theme Management Methods
+    @QtCore.Slot(int, str)
+    def set_item_theme(self, item_index, theme_name):
+        """Set a theme for a specific service item."""
+        try:
+            from openlp.core.common.registry import Registry
+            
+            service_manager = Registry().get('service_manager')
+            
+            # Check if item index is valid
+            if item_index < 0 or item_index >= len(service_manager.service_items):
+                self.operation_completed.emit(f"Invalid item index: {item_index}")
+                return
+            
+            # Get the service item
+            service_item = service_manager.service_items[item_index]['service_item']
+            
+            # Check if theme exists (unless it's None to clear theme)
+            if theme_name and theme_name.lower() != 'none':
+                theme_manager = Registry().get('theme_manager')
+                if theme_name not in theme_manager.get_theme_names():
+                    self.operation_completed.emit(f"Theme '{theme_name}' not found")
+                    return
+                theme_to_set = theme_name
+            else:
+                # Clear theme (use None to fall back to service/global theme)
+                theme_to_set = None
+            
+            # Update the service item's theme
+            service_item.update_theme(theme_to_set)
+            
+            # Refresh the service list to show changes
+            service_manager.repaint_service_list(item_index, -1)
+            service_manager.set_modified()
+            
+            # If this item is currently live and hot reload is enabled, refresh it
+            try:
+                live_controller = Registry().get('live_controller')
+                if (live_controller.service_item and 
+                    service_item.unique_identifier == live_controller.service_item.unique_identifier and
+                    Registry().get('settings').value('themes/hot reload')):
+                    live_controller.refresh_service_item(service_item)
+            except:
+                pass  # Not critical if live refresh fails
+            
+            if theme_to_set:
+                self.operation_completed.emit(f"Item {item_index} ('{service_item.title}') theme set to '{theme_to_set}'")
+            else:
+                self.operation_completed.emit(f"Item {item_index} ('{service_item.title}') theme cleared (using service/global theme)")
+            
+        except Exception as e:
+            self.operation_completed.emit(f"Error setting item theme: {str(e)}")
+
+    @QtCore.Slot(int)
+    def get_item_theme(self, item_index):
+        """Get the theme for a specific service item."""
+        try:
+            from openlp.core.common.registry import Registry
+            from openlp.core.common import ThemeLevel
+            
+            service_manager = Registry().get('service_manager')
+            
+            # Check if item index is valid
+            if item_index < 0 or item_index >= len(service_manager.service_items):
+                self.operation_completed.emit(f"Invalid item index: {item_index}")
+                return
+            
+            # Get the service item
+            service_item = service_manager.service_items[item_index]['service_item']
+            
+            # Get theme info
+            item_specific_theme = service_item.theme
+            effective_theme_data = service_item.get_theme_data()
+            effective_theme_name = effective_theme_data.theme_name if effective_theme_data else "Unknown"
+            
+            # Get theme level setting
+            theme_level = Registry().get('settings').value('themes/theme level')
+            level_names = {
+                ThemeLevel.Global: "Global",
+                ThemeLevel.Service: "Service", 
+                ThemeLevel.Song: "Song/Item"
+            }
+            level_name = level_names.get(theme_level, "Unknown")
+            
+            # Build result
+            if item_specific_theme:
+                result = f"Item {item_index} ('{service_item.title}'):\n"
+                result += f"  Item-specific theme: '{item_specific_theme}'\n"
+                result += f"  Effective theme: '{effective_theme_name}'\n"
+                result += f"  Theme level: {level_name}"
+            else:
+                result = f"Item {item_index} ('{service_item.title}'):\n"
+                result += f"  Item-specific theme: None (using service/global theme)\n"
+                result += f"  Effective theme: '{effective_theme_name}'\n"
+                result += f"  Theme level: {level_name}"
+            
+            self.operation_completed.emit(result)
+            
+        except Exception as e:
+            self.operation_completed.emit(f"Error getting item theme: {str(e)}")
+
+    @QtCore.Slot(int)
+    def clear_item_theme(self, item_index):
+        """Clear the theme for a specific service item (fall back to service/global theme)."""
+        try:
+            # Use the set_item_theme method with None to clear the theme
+            self.set_item_theme(item_index, None)
+        except Exception as e:
+            self.operation_completed.emit(f"Error clearing item theme: {str(e)}") 
