@@ -53,6 +53,16 @@ class MCPPlugin(Plugin):
     - Live slide control and theme management
     - Email parsing for automated service creation
     - Structured service creation from data
+    - URL download support for media files, services, and theme background images
+    
+    URL Support:
+    - All file path parameters accept both local paths and URLs (http, https, ftp, ftps)
+    - URLs are automatically downloaded to temporary locations
+    - Downloaded files are cleaned up when the plugin shuts down
+    - Supports downloading media files, service files, and theme background images
+    - Intelligent file type detection using HTTP Content-Type headers and URL pattern analysis
+    - Works with modern web services that don't have traditional file extensions in URLs
+    - Supports image hosting services (Unsplash, Pixabay), video platforms, and CDNs
     
     Known Limitations:
     - PowerPoint conversion may cause temporary GUI responsiveness issues
@@ -103,6 +113,15 @@ class MCPPlugin(Plugin):
     def finalise(self):
         """Shut down the MCP server."""
         log.info('MCP Plugin finalising')
+        
+        # Clean up any downloaded files
+        try:
+            from .url_utils import clean_temp_downloads
+            clean_temp_downloads()
+            log.info('Cleaned up temporary downloaded files')
+        except Exception as e:
+            log.debug(f'Error cleaning up temp files: {e}')
+        
         super(MCPPlugin, self).finalise()
 
     def _setup_websocket_fix(self):

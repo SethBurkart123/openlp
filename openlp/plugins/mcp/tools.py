@@ -71,7 +71,7 @@ class MCPToolsManager:
 
         @self.mcp_server.tool()
         def load_service(file_path: str) -> str:
-            """Load a service from a file path."""
+            """Load a service from a file path or URL. URLs will be downloaded automatically."""
             self.worker.load_service_requested.emit(file_path)
             return self.worker.wait_for_result()
 
@@ -103,7 +103,8 @@ class MCPToolsManager:
         """Register tools for media management."""
         @self.mcp_server.tool()
         def add_media_to_service(file_path: str, title: str = None) -> str:
-            """Add a media file to the current service."""
+            """Add a media file to the current service. Supports local file paths and URLs (http/https/ftp). 
+            URLs will be downloaded automatically. Supports images, videos, audio, and presentations (PDF, PowerPoint)."""
             # Check if this is a PowerPoint file that will need conversion
             file_extension = Path(file_path).suffix.lower()
             powerpoint_extensions = {'.pptx', '.ppt', '.pps', '.ppsx'}
@@ -195,7 +196,7 @@ class MCPToolsManager:
             background_start_color: str = "#000000", 
             background_end_color: str = "#000000",
             background_direction: str = "vertical",  # vertical, horizontal, circular
-            background_image_path: str = None,
+            background_image_path: str = None,  # Local file path or URL - URLs will be downloaded automatically
             font_main_name: str = "Arial",
             font_main_size: int = 40,
             font_main_color: str = "#FFFFFF",
@@ -211,7 +212,7 @@ class MCPToolsManager:
             font_footer_size: int = 12,
             font_footer_color: str = "#FFFFFF"
         ) -> str:
-            """Create a new theme with specified properties."""
+            """Create a new theme with specified properties. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
             theme_data = {
                 'theme_name': theme_name,
                 'background_type': background_type,
@@ -252,7 +253,7 @@ class MCPToolsManager:
             background_start_color: str = None,
             background_end_color: str = None,
             background_direction: str = None,
-            background_image_path: str = None,
+            background_image_path: str = None,  # Local file path or URL - URLs will be downloaded automatically
             font_main_name: str = None,
             font_main_size: int = None,
             font_main_color: str = None,
@@ -268,7 +269,7 @@ class MCPToolsManager:
             font_footer_size: int = None,
             font_footer_color: str = None
         ) -> str:
-            """Update properties of an existing theme. Only specified properties will be changed."""
+            """Update properties of an existing theme. Only specified properties will be changed. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
             updates = {}
             for key, value in locals().items():
                 if key != 'self' and key != 'theme_name' and key != 'updates' and value is not None:

@@ -35,6 +35,7 @@ from openlp.core.ui.icons import UiIcons
 from openlp.core.common.enum import ServiceItemType
 
 from .conversion import ConversionWorker
+from .url_utils import resolve_file_path, is_url
 
 log = logging.getLogger(__name__)
 
@@ -153,11 +154,19 @@ class MCPWorker(QtCore.QObject):
     @QtCore.Slot(str)
     def load_service(self, file_path):
         try:
+            # Resolve the file path (download if it's a URL)
+            resolved_path = resolve_file_path(file_path)
+            
             service_manager = Registry().get('service_manager')
-            service_manager.load_file(Path(file_path))
-            self.operation_completed.emit(f"Service loaded from {file_path}")
+            service_manager.load_file(resolved_path)
+            
+            if is_url(file_path):
+                self.operation_completed.emit(f"Service downloaded from {file_path} and loaded successfully")
+            else:
+                self.operation_completed.emit(f"Service loaded from {file_path}")
         except Exception as e:
             self.operation_completed.emit(f"Error loading service: {str(e)}")
+            log.error(f"Error loading service from {file_path}: {e}", exc_info=True)
     
     @QtCore.Slot(str)
     def save_service(self, file_path):
@@ -271,31 +280,33 @@ class MCPWorker(QtCore.QObject):
     @QtCore.Slot(str, str)
     def add_media(self, file_path, title):
         try:
-            file_path = Path(file_path)
-            
-            if not file_path.exists():
-                self.operation_completed.emit(f"Error: File '{file_path}' not found")
-                return
+            # Resolve the file path (download if it's a URL)
+            resolved_path = resolve_file_path(file_path)
             
             # Detect media type
-            extension = file_path.suffix.lower()
+            extension = resolved_path.suffix.lower()
             image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.svg'}
             video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp'}
             audio_extensions = {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'}
             presentation_extensions = {'.pdf', '.pptx', '.ppt', '.pps', '.ppsx', '.odp'}
             
+            # Update title to indicate if it was downloaded
+            if is_url(file_path) and not title:
+                title = f"{resolved_path.name} (downloaded)"
+            
             if extension in image_extensions:
-                self._add_image(file_path, title)
+                self._add_image(resolved_path, title)
             elif extension in video_extensions or extension in audio_extensions:
-                self._add_video_audio(file_path, title, extension in video_extensions)
+                self._add_video_audio(resolved_path, title, extension in video_extensions)
             elif extension in presentation_extensions:
-                self._add_presentation(file_path, title)
+                self._add_presentation(resolved_path, title)
             else:
                 supported = f"images ({', '.join(sorted(image_extensions))}), videos ({', '.join(sorted(video_extensions))}), audio ({', '.join(sorted(audio_extensions))}), presentations ({', '.join(sorted(presentation_extensions))})"
                 self.operation_completed.emit(f"Unsupported format: {extension}. Supported: {supported}")
                 
         except Exception as e:
             self.operation_completed.emit(f"Error adding media: {str(e)}")
+            log.error(f"Error adding media from {file_path}: {e}", exc_info=True)
     
     def _add_image(self, file_path, title):
         """Add an image using the images plugin."""
@@ -690,8 +701,22 @@ class MCPWorker(QtCore.QObject):
                 )
             elif background_type == 'image' and theme_data.get('background_image_path'):
                 theme.background_type = BackgroundType.to_string(BackgroundType.Image)
-                theme.background_source = theme_data['background_image_path']
-                theme.background_filename = theme_data['background_image_path']
+                
+                # Resolve the background image path (download if it's a URL)
+                image_path = theme_data['background_image_path']
+                try:
+                    resolved_image_path = resolve_file_path(image_path)
+                    # Convert to Path object as expected by OpenLP theme system
+                    from pathlib import Path
+                    resolved_path = Path(resolved_image_path)
+                    theme.background_source = resolved_path
+                    theme.background_filename = resolved_path
+                    
+                    if is_url(image_path):
+                        log.info(f"Downloaded background image from {image_path} to {resolved_image_path}")
+                except Exception as e:
+                    self.operation_completed.emit(f"Error downloading background image from {image_path}: {str(e)}")
+                    return
             
             # Set font properties
             theme.font_main_name = theme_data.get('font_main_name', 'Arial')
@@ -717,10 +742,14 @@ class MCPWorker(QtCore.QObject):
             # Generate preview and refresh UI
             theme_manager.update_preview_images([theme_name])
             
-            self.operation_completed.emit(f"Theme '{theme_name}' created successfully")
+            success_msg = f"Theme '{theme_name}' created successfully"
+            if background_type == 'image' and theme_data.get('background_image_path') and is_url(theme_data['background_image_path']):
+                success_msg += f" (background image downloaded from URL)"
+            self.operation_completed.emit(success_msg)
             
         except Exception as e:
             self.operation_completed.emit(f"Error creating theme: {str(e)}")
+            log.error(f"Error creating theme {theme_data.get('theme_name', 'unknown')}: {e}", exc_info=True)
 
     @QtCore.Slot(str)
     def get_theme_details(self, theme_name):
@@ -772,6 +801,7 @@ class MCPWorker(QtCore.QObject):
             from openlp.core.common.registry import Registry
             
             theme_name = theme_data['theme_name']
+            updates_data = theme_data.get('updates', {})
             theme_manager = Registry().get('theme_manager')
             
             # Get existing theme
@@ -780,15 +810,43 @@ class MCPWorker(QtCore.QObject):
                 self.operation_completed.emit(f"Theme '{theme_name}' not found")
                 return
             
-            # Update only provided properties
-            updates = []
-            for key, value in theme_data.items():
-                if key != 'theme_name' and value is not None:
-                    if hasattr(theme, key):
-                        setattr(theme, key, value)
-                        updates.append(f"{key}: {value}")
+            # Handle special case for background_image_path
+            if 'background_image_path' in updates_data and updates_data['background_image_path']:
+                image_path = updates_data['background_image_path']
+                try:
+                    resolved_image_path = resolve_file_path(image_path)
+                    # Convert to Path object as expected by OpenLP theme system
+                    from pathlib import Path
+                    resolved_path = Path(resolved_image_path)
+                    theme.background_source = resolved_path
+                    theme.background_filename = resolved_path
+                    
+                    if is_url(image_path):
+                        log.info(f"Downloaded background image from {image_path} to {resolved_image_path}")
+                    
+                    # Remove from updates_data since we handled it specially
+                    updates_data = {k: v for k, v in updates_data.items() if k != 'background_image_path'}
+                    
+                except Exception as e:
+                    self.operation_completed.emit(f"Error downloading background image from {image_path}: {str(e)}")
+                    return
             
-            if updates:
+            # Update other provided properties
+            updates = []
+            for key, value in updates_data.items():
+                if value is not None and hasattr(theme, key):
+                    setattr(theme, key, value)
+                    updates.append(f"{key}: {value}")
+            
+            # Add background image to updates list if it was processed
+            if 'background_image_path' in theme_data.get('updates', {}):
+                original_path = theme_data['updates']['background_image_path']
+                if is_url(original_path):
+                    updates.append(f"background_image_path: {original_path} (downloaded)")
+                else:
+                    updates.append(f"background_image_path: {original_path}")
+            
+            if updates or 'background_image_path' in theme_data.get('updates', {}):
                 # Save updated theme
                 theme_manager.save_theme(theme)
                 
@@ -801,6 +859,7 @@ class MCPWorker(QtCore.QObject):
                 
         except Exception as e:
             self.operation_completed.emit(f"Error updating theme: {str(e)}")
+            log.error(f"Error updating theme {theme_data.get('theme_name', 'unknown')}: {e}", exc_info=True)
 
     @QtCore.Slot(str)
     def delete_theme(self, theme_name):
