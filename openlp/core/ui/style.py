@@ -57,17 +57,60 @@ QToolBar
 """
 
 MEDIA_MANAGER_STYLE = """
-::tab#media_tool_box {
-    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-        stop: 0 palette(button), stop: 1.0 palette(mid));
+QDockWidget#media_manager_dock > QWidget {
+    padding-left: 4px;
+    padding-right: 4px;
+    border-radius: 0px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: none;
+    border-bottom: none;
+}
+
+QDockWidget#media_manager_dock::title {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: none;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}
+
+/* Make the main toolbox transparent */
+QToolBox#media_tool_box {
+    border: none;
+    background: transparent;
+}
+
+/* Style for unselected tabs */
+QToolBox#media_tool_box::tab {
+    background: palette(button);
     border: 0;
-    border-radius: 2px;
+    border-radius: 8px;
     margin-top: 0;
     margin-bottom: 0;
     text-align: left;
 }
-/* This is here to make the tabs on KDE with the Breeze theme work */
-::tab:selected {}
+
+QToolBox#media_tool_box::tab:hover:!selected {
+    background: palette(mid);
+}
+
+QToolBox#media_tool_box::tab:selected {
+    background: rgba(100, 100, 100, 0.7);
+}
+
+QToolBox#media_tool_box::pane {
+    background: palette(base);
+    border: 2px solid palette(highlight);
+    border-top: none;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    margin-top: -2px;
+    padding: 8px;
+}
+
+#SongList {
+	border-radius: 16px;
+}
 """
 
 PROGRESSBAR_STYLE = """
@@ -249,6 +292,52 @@ def get_application_stylesheet():
             stylesheet += alternate_rows_repair_stylesheet
         if is_win():
             stylesheet += WIN_REPAIR_STYLESHEET
+    
+    stylesheet += '''    
+    QDockWidget > QWidget {
+        border-radius: 12px;
+    }
+
+    QWidget#main_content {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+    }
+    
+    QStatusBar#status_bar {
+        background: rgba(0, 0, 0, 0.2);
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    
+    QDockWidget::title {
+        background: rgba(255, 255, 255, 0.05);
+        border: none;
+        border-radius: 8px;
+        padding: 4px;
+        color: palette(window-text);
+        font-weight: 600;
+    }
+    
+    QToolBar {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        border-radius: 8px;
+    }
+    
+    QSplitter::handle {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+    }
+    
+    QSplitter::handle:horizontal {
+        width: 2px;
+    }
+    
+    QSplitter::handle:vertical {
+        height: 2px;
+    }
+    '''
+    
     stylesheet += 'QWidget#slide_controller_toolbar QToolButton::checked {' \
         '  background-color: palette(highlight);' \
         '  color: palette(highlighted-text);' \
