@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OpenLP"
+dynamic = ["version"]
+description = "Open source Church presentation and lyrics projection application."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "GPL-3.0-or-later"}
+keywords = [
+    "open", "source", "church", "presentation", "lyrics", "projection", 
+    "song", "bible", "display", "project"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: MacOS X",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Religion",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Natural Language :: Afrikaans",
+    "Natural Language :: Dutch",
+    "Natural Language :: English",
+    "Natural Language :: French",
+    "Natural Language :: German",
+    "Natural Language :: Hungarian",
+    "Natural Language :: Indonesian",
+    "Natural Language :: Japanese",
+    "Natural Language :: Norwegian",
+    "Natural Language :: Portuguese (Brazilian)",
+    "Natural Language :: Russian",
+    "Natural Language :: Swedish",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: BSD :: FreeBSD",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment :: Gnome",
+    "Topic :: Desktop Environment :: K Desktop Environment (KDE)",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Graphics :: Presentation",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Religion"
+]
+
+dependencies = [
+    "alembic",
+    "beautifulsoup4",
+    "chardet",
+    "dbus-python; platform_system=='Linux'",
+    "distro; platform_system=='Linux'",
+    "flask",
+    "flask-cors",
+    "lxml",
+    "Mako",
+    "packaging",
+    "platformdirs",
+    "PyICU",
+    "pyobjc; platform_system=='Darwin'",
+    "pyobjc-framework-Cocoa; platform_system=='Darwin'",
+    "PySide6 >= 6.8",
+    "Pyro5; platform_system=='Darwin'",
+    "pywin32; platform_system=='Windows'",
+    "QtAwesome",
+    "qrcode",
+    "requests",
+    "SQLAlchemy",
+    "waitress",
+    "websockets"
+]
+
+[project.optional-dependencies]
+darkstyle = ["QDarkStyle"]
+mysql = ["PyMySQL"]
+odbc = ["pyodbc"]
+postgresql = ["psycopg2_binary"]
+spellcheck = ["pyenchant >= 1.6"]
+sword-bibles = ["pysword"]
+test = [
+    "pyodbc",
+    "pysword", 
+    "pytest",
+    "pytest-qt",
+    "flake8"
+]
+
+[project.urls]
+Homepage = "https://openlp.org/"
+
+[project.gui-scripts]
+openlp = "openlp.__main__:start"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+exclude = ["ez_setup", "tests*"]
+
+[tool.setuptools.dynamic]
+version = {file = "openlp/.version"}

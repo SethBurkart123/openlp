@@ -85,7 +85,13 @@ class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
         self.server = None
         self.state_queues = set()
         self.message_queues = set()
-        asyncio.run(self.run_server(address, port))
+        # Set up the event loop for thread-safe access
+        self.event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.event_loop)
+        try:
+            self.event_loop.run_until_complete(self.run_server(address, port))
+        finally:
+            self.event_loop.close()
         self.quit.emit()
 
     def stop(self):

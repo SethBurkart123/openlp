@@ -472,10 +472,29 @@ def main():
         qt_args.append('OpenLP')
     elif is_macosx() and getattr(sys, 'frozen', False) and not os.environ.get('QTWEBENGINEPROCESS_PATH'):
         # Set the location to the QtWebEngineProcess binary, normally set by PyInstaller, but it moves around...
-        os.environ['QTWEBENGINEPROCESS_PATH'] = str((AppLocation.get_directory(AppLocation.AppDir) / 'PySide6' /
-                                                     'Qt6' / 'lib' / 'QtWebEngineCore.framework' / 'Versions' /
-                                                     '6' / 'Helpers' / 'QtWebEngineProcess.app' / 'Contents' /
-                                                     'MacOS' / 'QtWebEngineProcess').resolve())
+        app_dir = AppLocation.get_directory(AppLocation.AppDir)
+        
+        # Try to find QtWebEngineProcess in the actual app bundle structure
+        possible_paths = [
+            # Current hardcoded path (for backwards compatibility)
+            app_dir / 'PySide6' / 'Qt6' / 'lib' / 'QtWebEngineCore.framework' / 'Versions' / '6' / 'Helpers' / 'QtWebEngineProcess.app' / 'Contents' / 'MacOS' / 'QtWebEngineProcess',
+            # Alternative path that might be used by newer PySide6 versions
+            app_dir / 'PySide6' / 'Qt' / 'lib' / 'QtWebEngineCore.framework' / 'Versions' / 'A' / 'Helpers' / 'QtWebEngineProcess.app' / 'Contents' / 'MacOS' / 'QtWebEngineProcess',
+            # Check in Frameworks directory as well
+            app_dir.parent / 'Frameworks' / 'PySide6' / 'Qt6' / 'lib' / 'QtWebEngineCore.framework' / 'Versions' / '6' / 'Helpers' / 'QtWebEngineProcess.app' / 'Contents' / 'MacOS' / 'QtWebEngineProcess',
+            app_dir.parent / 'Frameworks' / 'PySide6' / 'Qt' / 'lib' / 'QtWebEngineCore.framework' / 'Versions' / 'A' / 'Helpers' / 'QtWebEngineProcess.app' / 'Contents' / 'MacOS' / 'QtWebEngineProcess',
+        ]
+        
+        qtwebengine_path = None
+        for path in possible_paths:
+            if path.exists():
+                qtwebengine_path = str(path.resolve())
+                break
+        
+        if qtwebengine_path:
+            os.environ['QTWEBENGINEPROCESS_PATH'] = qtwebengine_path
+        else:
+            log.warning('Could not find QtWebEngineProcess binary in expected locations')
     # Prevent the use of wayland, use xcb instead
     if is_wayland_compositor():
         qt_args.extend(['-platform', 'xcb'])
