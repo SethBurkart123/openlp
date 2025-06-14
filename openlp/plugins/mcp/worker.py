@@ -280,8 +280,19 @@ class MCPWorker(QtCore.QObject):
     @QtCore.Slot(str, str)
     def add_media(self, file_path, title):
         try:
+            # Get MCP plugin settings for video downloads
+            settings = Registry().get('settings')
+            video_quality = settings.value('mcp/video_quality')
+            download_location = settings.value('mcp/download_location')
+            
+            # Set custom download directory if specified
+            temp_dir = None
+            if download_location and download_location.strip():
+                from pathlib import Path
+                temp_dir = Path(download_location)
+            
             # Resolve the file path (download if it's a URL)
-            resolved_path = resolve_file_path(file_path)
+            resolved_path = resolve_file_path(file_path, temp_dir=temp_dir, quality=video_quality)
             
             # Detect media type
             extension = resolved_path.suffix.lower()

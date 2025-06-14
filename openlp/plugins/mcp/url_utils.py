@@ -41,7 +41,6 @@ All downloads are cached in temporary directories and automatically cleaned up.
 
 import logging
 import tempfile
-import urllib.parse
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -50,6 +49,12 @@ try:
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
+
+try:
+    import yt_dlp
+    HAS_YT_DLP = True
+except ImportError:
+    HAS_YT_DLP = False
 
 from openlp.core.common.httputils import download_file, get_url_file_size
 
@@ -78,6 +83,23 @@ def is_url(path_or_url: str) -> bool:
         return parsed.scheme in ('http', 'https', 'ftp', 'ftps')
     except Exception:
         return False
+
+
+def is_video_platform_url(url: str) -> bool:
+    """
+    Check if URL is from a video platform that needs special handling with yt-dlp.
+    
+    :param url: The URL to check
+    :return: True if it's from a video platform like YouTube, Vimeo, etc.
+    """
+    url_lower = url.lower()
+    video_platforms = [
+        'youtube.com', 'youtu.be', 'youtube-nocookie.com',
+        'vimeo.com', 'dailymotion.com', 'twitch.tv',
+        'facebook.com/watch', 'instagram.com/p/', 'instagram.com/reel/',
+        'tiktok.com', 'twitter.com', 'x.com'
+    ]
+    return any(platform in url_lower for platform in video_platforms)
 
 
 def get_content_type_from_url(url: str) -> str:
@@ -255,7 +277,58 @@ def get_filename_from_url(url: str) -> str:
         return f"download_{hash(url) % 10000}.tmp"
 
 
-def resolve_file_path(file_path_or_url: str, temp_dir: Path = None) -> Path:
+def download_video_platform_file(url: str, download_path: Path, quality: str = 'bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best') -> bool:
+    """
+    Download video from platforms like YouTube using yt-dlp.
+    
+    :param url: The video platform URL
+    :param download_path: The path where to save the file (without extension)
+    :param quality: The quality format string for yt-dlp (includes video+audio combination)
+    :return: True if successful, False otherwise
+    """
+    if not HAS_YT_DLP:
+        log.error("yt-dlp not available for video platform downloads")
+        return False
+    
+    try:
+        # Configure yt-dlp options based on user settings
+        ydl_opts = {
+            'outtmpl': str(download_path.parent / f"{download_path.stem}.%(ext)s"),
+            'format': quality,  # Quality string now includes both video and audio preferences
+            'writeinfojson': False,
+            'writesubtitles': False,
+            'writeautomaticsub': False,
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Extract info first to get the final filename
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                log.error(f"Could not extract video info from {url}")
+                return False
+            
+            # Download the video
+            ydl.download([url])
+            
+            # Find the downloaded file (yt-dlp adds the extension)
+            final_extension = info.get('ext', 'mp4')
+            final_path = download_path.parent / f"{download_path.stem}.{final_extension}"
+            
+            if final_path.exists():
+                log.info(f"Successfully downloaded video from {url} to {final_path}")
+                return True
+            else:
+                log.error(f"Downloaded file not found at expected location: {final_path}")
+                return False
+                
+    except Exception as e:
+        log.error(f"Failed to download video from {url}: {e}")
+        return False
+
+
+def resolve_file_path(file_path_or_url: str, temp_dir: Path = None, quality: str = 'bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best') -> Path:
     """
     Resolve a file path or URL to a local file path.
     If it's a URL, download it to a temporary location.
@@ -263,6 +336,7 @@ def resolve_file_path(file_path_or_url: str, temp_dir: Path = None) -> Path:
     
     :param file_path_or_url: Either a local file path or a URL
     :param temp_dir: Optional temporary directory to download to
+    :param quality: Quality setting for video downloads (includes video+audio preferences)
     :return: Path to the local file
     :raises: Exception if download fails or file doesn't exist
     """
@@ -279,29 +353,65 @@ def resolve_file_path(file_path_or_url: str, temp_dir: Path = None) -> Path:
         
         temp_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generate filename using improved detection
-        filename = get_filename_from_url(file_path_or_url)
-        download_path = temp_dir / filename
-        
-        # Download the file
-        progress = DownloadProgress()
-        try:
-            success = download_file(progress, file_path_or_url, download_path)
-            if not success:
-                raise Exception(f"Failed to download file from {file_path_or_url}")
-                
-            log.info(f"Successfully downloaded {file_path_or_url} to {download_path}")
-            return download_path
+        # Check if this is a video platform URL that needs special handling
+        if is_video_platform_url(file_path_or_url):
+            log.info(f"Detected video platform URL, using yt-dlp: {file_path_or_url}")
             
-        except Exception as e:
-            log.error(f"Error downloading {file_path_or_url}: {e}")
-            # Clean up partial download
-            if download_path.exists():
-                try:
-                    download_path.unlink()
-                except Exception:
-                    pass
-            raise Exception(f"Failed to download {file_path_or_url}: {e}")
+            # Generate base filename for video platforms
+            base_filename = f"video_{hash(file_path_or_url) % 10000}"
+            download_path_base = temp_dir / base_filename
+            
+            try:
+                success = download_video_platform_file(file_path_or_url, download_path_base, quality)
+                if not success:
+                    raise Exception(f"Failed to download video from {file_path_or_url}")
+                
+                # Find the actual downloaded file (yt-dlp adds extension)
+                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
+                    potential_path = temp_dir / f"{base_filename}.{ext}"
+                    if potential_path.exists():
+                        log.info(f"Successfully downloaded video to {potential_path}")
+                        return potential_path
+                
+                raise Exception(f"Downloaded video file not found in expected location")
+                
+            except Exception as e:
+                log.error(f"Error downloading video from {file_path_or_url}: {e}")
+                # Clean up any partial downloads
+                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov', 'part']:
+                    cleanup_path = temp_dir / f"{base_filename}.{ext}"
+                    if cleanup_path.exists():
+                        try:
+                            cleanup_path.unlink()
+                        except Exception:
+                            pass
+                raise Exception(f"Failed to download video from {file_path_or_url}: {e}")
+        
+        else:
+            # Regular file download for non-video platforms
+            # Generate filename using improved detection
+            filename = get_filename_from_url(file_path_or_url)
+            download_path = temp_dir / filename
+            
+            # Download the file
+            progress = DownloadProgress()
+            try:
+                success = download_file(progress, file_path_or_url, download_path)
+                if not success:
+                    raise Exception(f"Failed to download file from {file_path_or_url}")
+                    
+                log.info(f"Successfully downloaded {file_path_or_url} to {download_path}")
+                return download_path
+                
+            except Exception as e:
+                log.error(f"Error downloading {file_path_or_url}: {e}")
+                # Clean up partial download
+                if download_path.exists():
+                    try:
+                        download_path.unlink()
+                    except Exception:
+                        pass
+                raise Exception(f"Failed to download {file_path_or_url}: {e}")
     
     else:
         # It's a local path

@@ -116,41 +116,6 @@ class MCPToolsManager:
                 return self.worker.wait_for_result_long()  # 90 second timeout
             else:
                 return self.worker.wait_for_result()  # 10 second timeout
-        
-        @self.mcp_server.tool()
-        def add_sample_image() -> str:
-            """Add the sample image.jpg to the service for testing."""
-            sample_path = os.path.join(os.getcwd(), "image.jpg")
-            self.worker.add_media_requested.emit(sample_path, "Sample Image")
-            return self.worker.wait_for_result()
-        
-        @self.mcp_server.tool()
-        def add_sample_video() -> str:
-            """Add the sample video.mp4 to the service for testing."""
-            sample_path = os.path.join(os.getcwd(), "video.mp4")
-            self.worker.add_media_requested.emit(sample_path, "Sample Video")
-            return self.worker.wait_for_result()
-        
-        @self.mcp_server.tool()
-        def test_media_types() -> str:
-            """Test adding both sample media files to demonstrate image vs video handling."""
-            cwd = os.getcwd()
-            
-            # Create new service
-            self.worker.create_service_requested.emit()
-            result1 = self.worker.wait_for_result()
-            
-            # Add image
-            image_path = os.path.join(cwd, "image.jpg")
-            self.worker.add_media_requested.emit(image_path, "Test Image")
-            result2 = self.worker.wait_for_result()
-            
-            # Add video
-            video_path = os.path.join(cwd, "video.mp4")
-            self.worker.add_media_requested.emit(video_path, "Test Video")
-            result3 = self.worker.wait_for_result()
-            
-            return f"Media test completed:\n1. {result1}\n2. {result2}\n3. {result3}"
 
     def _register_slide_tools(self):
         """Register tools for controlling the live display."""

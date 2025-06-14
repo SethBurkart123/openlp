@@ -37,6 +37,7 @@ from openlp.core.ui.icons import UiIcons
 
 from .worker import MCPWorker
 from .tools import MCPToolsManager, FASTMCP_AVAILABLE
+from .mcptab import MCPTab
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class MCPPlugin(Plugin):
     log.info('MCP Plugin loaded')
 
     def __init__(self):
-        super(MCPPlugin, self).__init__('mcp')
+        super(MCPPlugin, self).__init__('mcp', settings_tab_class=MCPTab)
         self.weight = -1
         self.icon_path = UiIcons().desktop
         self.icon = build_icon(self.icon_path)
@@ -114,11 +115,15 @@ class MCPPlugin(Plugin):
         """Shut down the MCP server."""
         log.info('MCP Plugin finalising')
         
-        # Clean up any downloaded files
+        # Clean up any downloaded files (unless user wants to keep them)
         try:
-            from .url_utils import clean_temp_downloads
-            clean_temp_downloads()
-            log.info('Cleaned up temporary downloaded files')
+            keep_downloads = Registry().get('settings').value('mcp/keep_downloads')
+            if not keep_downloads:
+                from .url_utils import clean_temp_downloads
+                clean_temp_downloads()
+                log.info('Cleaned up temporary downloaded files')
+            else:
+                log.info('Keeping downloaded files as requested in settings')
         except Exception as e:
             log.debug(f'Error cleaning up temp files: {e}')
         

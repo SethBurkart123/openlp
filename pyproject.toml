@@ -7,7 +7,7 @@ name = "OpenLP"
 dynamic = ["version"]
 description = "Open source Church presentation and lyrics projection application."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "GPL-3.0-or-later"}
 keywords = [
     "open", "source", "church", "presentation", "lyrics", "projection", 
@@ -55,6 +55,7 @@ dependencies = [
     "chardet",
     "dbus-python; platform_system=='Linux'",
     "distro; platform_system=='Linux'",
+    "fastmcp",
     "flask",
     "flask-cors",
     "lxml",
@@ -72,7 +73,11 @@ dependencies = [
     "requests",
     "SQLAlchemy",
     "waitress",
-    "websockets"
+    "websockets",
+    "macholib",
+    "pyinstaller",
+    "dmgbuild",
+    "yt-dlp"
 ]
 
 [project.optional-dependencies]
