@@ -68,6 +68,10 @@ QDockWidget#media_manager_dock > QWidget {
 }
 
 QDockWidget#media_manager_dock::title {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 4px;
+    color: palette(window-text);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-bottom: none;
     border-bottom-left-radius: 0px;
@@ -308,16 +312,7 @@ def get_application_stylesheet():
         border: none;
         border-top: 1px solid rgba(255, 255, 255, 0.15);
     }
-    
-    QDockWidget::title {
-        background: rgba(255, 255, 255, 0.05);
-        border: none;
-        border-radius: 8px;
-        padding: 4px;
-        color: palette(window-text);
-        font-weight: 600;
-    }
-    
+
     QToolBar {
         background: rgba(255, 255, 255, 0.1);
         border: none;
