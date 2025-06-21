@@ -287,4 +287,4 @@ class MCPToolsManager:
     async def run_server_async(self):
         """Run the MCP server asynchronously."""
         if self.mcp_server:
-            await self.mcp_server.run_async(transport="sse", host="127.0.0.1", port=8765) 
+            await self.mcp_server.run_async(transport="sse", host="0.0.0.0", port=8765) 
