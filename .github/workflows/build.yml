@@ -55,6 +55,8 @@ jobs:
         # Verify candle.exe is accessible
         Write-Host "Checking if candle.exe is in PATH..."
         where.exe candle
+        
+
     
     - name: Install Python dependencies
       run: |
@@ -108,14 +110,14 @@ jobs:
     - name: Build Windows installer (regular)
       run: |
         cd packaging/builders
-        python windows-builder.py --config ../windows/config.ini --skip-update --verbose
+        python windows-builder.py --config ../windows/config.ini --skip-update
       env:
         PYTHONPATH: packaging/builders
     
     - name: Build Windows installer (portable)
       run: |
         cd packaging/builders
-        python windows-builder.py --config ../windows/config.ini --skip-update --verbose --portable
+        python windows-builder.py --config ../windows/config.ini --skip-update --portable
       env:
         PYTHONPATH: packaging/builders
     
@@ -136,13 +138,6 @@ jobs:
       with:
         name: windows-x64-msi-installer
         path: dist/OpenLP-*.msi
-        if-no-files-found: warn
-    
-    - name: Upload Windows Portable installer
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-x64-portable
-        path: dist/OpenLPPortable_*.paf.exe
         if-no-files-found: warn
 
   build-macos:
