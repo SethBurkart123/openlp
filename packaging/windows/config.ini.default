@@ -1,8 +1,8 @@
 [executables]
 portablelauncher = %(progfiles)s\PortableApps.comLauncher\PortableApps.comLauncherGenerator.exe
 portableinstaller = %(progfiles)s\PortableApps.comInstaller\PortableApps.comInstaller.exe
-candle = %(progfiles)s\WiX Toolset v3.14\bin\candle.exe
-light = %(progfiles)s\WiX Toolset v3.14\bin\light.exe
+candle = candle.exe
+light = light.exe
 
 [paths]
 branch = %(here)s\..\..

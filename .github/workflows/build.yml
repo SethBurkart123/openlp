@@ -24,17 +24,37 @@ jobs:
     
     - name: Install system dependencies
       run: |
-        # WiX Toolset is already installed on GitHub runners, just add to PATH
-        # Add WiX to PATH (check both possible locations)
-        if (Test-Path "C:\Program Files (x86)\WiX Toolset v3.14\bin") {
-          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
-        } elseif (Test-Path "C:\Program Files\WiX Toolset v3.14\bin") {
-          echo "C:\Program Files\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
-        } else {
-          # If not found, install it
+        # List existing WiX installations
+        Write-Host "Checking for WiX installations..."
+        Get-ChildItem "C:\Program Files*" -Directory -Name "*WiX*" -ErrorAction SilentlyContinue
+        
+        # WiX Toolset is already installed on GitHub runners, find the version
+        $wixPaths = @(
+          "C:\Program Files (x86)\WiX Toolset v3.14\bin",
+          "C:\Program Files\WiX Toolset v3.14\bin",
+          "C:\Program Files (x86)\WiX Toolset v3.11\bin",
+          "C:\Program Files\WiX Toolset v3.11\bin"
+        )
+        
+        $wixFound = $false
+        foreach ($path in $wixPaths) {
+          if (Test-Path $path) {
+            Write-Host "Found WiX at: $path"
+            echo $path >> $env:GITHUB_PATH
+            $wixFound = $true
+            break
+          }
+        }
+        
+        if (-not $wixFound) {
+          Write-Host "WiX not found, installing..."
           choco install wixtoolset -y
           echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
         }
+        
+        # Verify candle.exe is accessible
+        Write-Host "Checking if candle.exe is in PATH..."
+        where.exe candle
     
     - name: Install Python dependencies
       run: |
