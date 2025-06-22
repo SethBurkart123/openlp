@@ -227,6 +227,11 @@ jobs:
         sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         sudo flatpak install -y flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 io.qt.PySide.BaseApp//6.8
     
+    - name: Install Python dependencies for resource generation
+      run: |
+        python -m pip install --upgrade pip
+        pip install PySide6
+    
     - name: Generate resources
       run: |
         # Generate the Qt resources file that contains icons and images
