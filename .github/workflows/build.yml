@@ -105,10 +105,17 @@ jobs:
           Copy-Item "config.ini.default" "config.ini"
         }
     
-    - name: Build Windows installer
+    - name: Build Windows installer (regular)
       run: |
         cd packaging/builders
         python windows-builder.py --config ../windows/config.ini --skip-update --verbose
+      env:
+        PYTHONPATH: packaging/builders
+    
+    - name: Build Windows installer (portable)
+      run: |
+        cd packaging/builders
+        python windows-builder.py --config ../windows/config.ini --skip-update --verbose --portable
       env:
         PYTHONPATH: packaging/builders
     
@@ -124,11 +131,18 @@ jobs:
           Write-Host "  dist folder not found"
         }
     
-    - name: Upload Windows artifacts
+    - name: Upload Windows MSI installer
       uses: actions/upload-artifact@v4
       with:
-        name: windows-x64-installer
-        path: dist/OpenLP-*.exe
+        name: windows-x64-msi-installer
+        path: dist/OpenLP-*.msi
+        if-no-files-found: warn
+    
+    - name: Upload Windows Portable installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-x64-portable
+        path: dist/OpenLPPortable_*.paf.exe
         if-no-files-found: warn
 
   build-macos:
