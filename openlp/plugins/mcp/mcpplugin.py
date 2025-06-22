@@ -25,6 +25,7 @@ for the MCP (Model Context Protocol) plugin.
 
 import logging
 import threading
+import time
 
 from PySide6 import QtCore
 
@@ -80,8 +81,10 @@ class MCPPlugin(Plugin):
         self.worker = None
         self.tools_manager = None
         self.server_thread = None
+        self._server_running = False
         State().add_service(self.name, self.weight, is_plugin=True)
         State().update_pre_conditions(self.name, self.check_pre_conditions())
+        self._init_default_settings()
 
     @staticmethod
     def about():
@@ -93,6 +96,16 @@ class MCPPlugin(Plugin):
     def check_pre_conditions(self):
         """Check if FastMCP is available."""
         return FASTMCP_AVAILABLE
+
+    def _init_default_settings(self):
+        """Initialize default settings for the MCP plugin."""
+        settings = Registry().get('settings')
+        settings.setValue('mcp/port', settings.value('mcp/port') or 8765)
+        settings.setValue('mcp/host', settings.value('mcp/host') or '0.0.0.0')
+        settings.setValue('mcp/auto_start', settings.value('mcp/auto_start') or True)
+        settings.setValue('mcp/video_quality', settings.value('mcp/video_quality') or 'bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best')
+        settings.setValue('mcp/keep_downloads', settings.value('mcp/keep_downloads') or False)
+        settings.setValue('mcp/download_location', settings.value('mcp/download_location') or '')
 
     def initialise(self):
         """Initialize the MCP server and start it in a separate thread."""
@@ -109,11 +122,19 @@ class MCPPlugin(Plugin):
         self._setup_worker()
         self._setup_mcp_server()
         
+        # Auto-start server if enabled
+        settings = Registry().get('settings')
+        if settings.value('mcp/auto_start'):
+            self.start_server()
+        
         super(MCPPlugin, self).initialise()
 
     def finalise(self):
         """Shut down the MCP server."""
         log.info('MCP Plugin finalising')
+        
+        # Stop the server
+        self.stop_server()
         
         # Clean up any downloaded files (unless user wants to keep them)
         try:
@@ -206,12 +227,132 @@ class MCPPlugin(Plugin):
         if not FASTMCP_AVAILABLE:
             return
 
-        # Create tools manager with all MCP tools
-        self.tools_manager = MCPToolsManager(self.worker)
+        # Get settings
+        settings = Registry().get('settings')
+        port = settings.value('mcp/port')
+        host = settings.value('mcp/host')
         
-        # Start server in separate thread
-        self.server_thread = threading.Thread(target=self._run_server, daemon=True)
-        self.server_thread.start()
+        # Create tools manager with all MCP tools and configured port/host
+        self.tools_manager = MCPToolsManager(self.worker, port, host)
+
+    def start_server(self):
+        """Start the MCP server."""
+        if self._server_running or not FASTMCP_AVAILABLE:
+            return
+            
+        try:
+            # Update settings in case they changed
+            settings = Registry().get('settings')
+            port = settings.value('mcp/port')
+            host = settings.value('mcp/host')
+            
+            if self.tools_manager:
+                self.tools_manager.port = port
+                self.tools_manager.host = host
+            
+            # Start server in separate thread
+            self.server_thread = threading.Thread(target=self._run_server, daemon=True)
+            self.server_thread.start()
+            self._server_running = True
+            log.info(f'MCP server starting on {host}:{port}')
+        except Exception as e:
+            log.error(f'Error starting MCP server: {e}')
+            raise
+
+    def stop_server(self):
+        """Stop the MCP server."""
+        if not self._server_running:
+            return
+            
+        try:
+            self._server_running = False
+            
+            # Signal the server to shutdown properly
+            if self.tools_manager:
+                self.tools_manager.shutdown_server()
+            
+            # Wait a bit for graceful shutdown
+            if self.server_thread and self.server_thread.is_alive():
+                self.server_thread.join(timeout=2.0)
+            
+            log.info('MCP server stopped')
+        except Exception as e:
+            log.error(f'Error stopping MCP server: {e}')
+
+    def restart_server(self):
+        """Restart the MCP server with current settings."""
+        if self._server_running:
+            self.stop_server()
+            # Wait a moment for the server to fully stop
+            time.sleep(0.5)
+        self.start_server()
+
+    def get_server_urls(self):
+        """Get all URLs where the server is accessible."""
+        if not self._server_running:
+            return []
+        
+        settings = Registry().get('settings')
+        port = settings.value('mcp/port')
+        host = settings.value('mcp/host')
+        
+        urls = []
+        
+        if host == '0.0.0.0':
+            # Server is bound to all interfaces, show all possible addresses
+            import socket
+            
+            # Add localhost
+            urls.append(f'http://127.0.0.1:{port}/sse')
+            
+            # Add local network addresses
+            try:
+                # Get all network interfaces
+                hostname = socket.gethostname()
+                local_ip = socket.gethostbyname(hostname)
+                if local_ip != '127.0.0.1':
+                    urls.append(f'http://{local_ip}:{port}/sse')
+            except:
+                pass
+            
+            # Try to get additional network interfaces
+            try:
+                import subprocess
+                import platform
+                
+                if platform.system() == 'Darwin':  # macOS
+                    result = subprocess.run(['ifconfig'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        import re
+                        # Find all inet addresses
+                        inet_matches = re.findall(r'inet (\d+\.\d+\.\d+\.\d+)', result.stdout)
+                        for ip in inet_matches:
+                            if ip != '127.0.0.1' and not ip.startswith('169.254'):  # Skip loopback and link-local
+                                url = f'http://{ip}:{port}/sse'
+                                if url not in urls:
+                                    urls.append(url)
+                
+                elif platform.system() == 'Linux':
+                    result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        ips = result.stdout.strip().split()
+                        for ip in ips:
+                            if ip != '127.0.0.1':
+                                url = f'http://{ip}:{port}/sse'
+                                if url not in urls:
+                                    urls.append(url)
+            except:
+                # If we can't get network info, that's okay
+                pass
+        else:
+            # Server is bound to specific host
+            urls.append(f'http://{host}:{port}/sse')
+        
+        return urls
+
+    def is_server_running(self):
+        """Check if the server is currently running."""
+        return self._server_running
 
     def _run_server(self):
         """Run the MCP server in a separate thread."""
@@ -219,12 +360,17 @@ class MCPPlugin(Plugin):
             import asyncio
             loop = asyncio.new_event_loop()
             try:
+                asyncio.set_event_loop(loop)
                 loop.run_until_complete(self.tools_manager.run_server_async())
+            except Exception as e:
+                if self._server_running:  # Only log if we didn't intentionally stop
+                    log.error(f'MCP server error: {e}')
             finally:
                 loop.close()
-            log.info('MCP server started on http://127.0.0.1:8765')
+                self._server_running = False
         except Exception as e:
             log.error(f'Error running MCP server: {e}')
+            self._server_running = False
 
     def set_plugin_text_strings(self):
         """Called to define all translatable texts of the plugin."""

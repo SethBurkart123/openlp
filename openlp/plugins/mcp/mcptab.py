@@ -23,11 +23,14 @@ The :mod:`~openlp.plugins.mcp.mcptab` module contains the settings tab
 for the MCP plugin, which is inserted into the configuration dialog.
 """
 
+import logging
 from PySide6 import QtCore, QtWidgets
 
 from openlp.core.common.i18n import translate
+from openlp.core.common.registry import Registry
 from openlp.core.lib.settingstab import SettingsTab
 
+log = logging.getLogger(__name__)
 
 class MCPTab(SettingsTab):
     """
@@ -39,6 +42,77 @@ class MCPTab(SettingsTab):
         """
         self.setObjectName('MCPTab')
         super(MCPTab, self).setup_ui()
+        
+        # Server Control group box
+        self.server_control_group_box = QtWidgets.QGroupBox(self.left_column)
+        self.server_control_group_box.setObjectName('server_control_group_box')
+        self.server_control_layout = QtWidgets.QVBoxLayout(self.server_control_group_box)
+        self.server_control_layout.setObjectName('server_control_layout')
+        
+        # Server info label
+        self.server_info_label = QtWidgets.QLabel(self.server_control_group_box)
+        self.server_info_label.setWordWrap(True)
+        self.server_info_label.setObjectName('server_info_label')
+        self.server_control_layout.addWidget(self.server_info_label)
+        
+        # Port settings
+        self.port_layout = QtWidgets.QHBoxLayout()
+        self.port_label = QtWidgets.QLabel(self.server_control_group_box)
+        self.port_label.setObjectName('port_label')
+        self.port_spin_box = QtWidgets.QSpinBox(self.server_control_group_box)
+        self.port_spin_box.setObjectName('port_spin_box')
+        self.port_spin_box.setMinimum(1024)
+        self.port_spin_box.setMaximum(65535)
+        self.port_spin_box.setValue(8765)
+        
+        self.port_layout.addWidget(self.port_label)
+        self.port_layout.addWidget(self.port_spin_box)
+        self.port_layout.addStretch()
+        self.server_control_layout.addLayout(self.port_layout)
+        
+        # Host settings
+        self.host_layout = QtWidgets.QHBoxLayout()
+        self.host_label = QtWidgets.QLabel(self.server_control_group_box)
+        self.host_label.setObjectName('host_label')
+        self.host_combo_box = QtWidgets.QComboBox(self.server_control_group_box)
+        self.host_combo_box.setObjectName('host_combo_box')
+        self.host_combo_box.addItems(['0.0.0.0', '127.0.0.1'])
+        self.host_combo_box.setEditable(True)  # Allow custom IP addresses
+        
+        self.host_layout.addWidget(self.host_label)
+        self.host_layout.addWidget(self.host_combo_box)
+        self.host_layout.addStretch()
+        self.server_control_layout.addLayout(self.host_layout)
+        
+        # Auto-start checkbox
+        self.auto_start_check_box = QtWidgets.QCheckBox(self.server_control_group_box)
+        self.auto_start_check_box.setObjectName('auto_start_check_box')
+        self.server_control_layout.addWidget(self.auto_start_check_box)
+        
+        # Server control buttons
+        self.server_buttons_layout = QtWidgets.QHBoxLayout()
+        self.start_server_button = QtWidgets.QPushButton(self.server_control_group_box)
+        self.start_server_button.setObjectName('start_server_button')
+        self.stop_server_button = QtWidgets.QPushButton(self.server_control_group_box)
+        self.stop_server_button.setObjectName('stop_server_button')
+        self.server_status_label = QtWidgets.QLabel(self.server_control_group_box)
+        self.server_status_label.setObjectName('server_status_label')
+        
+        self.server_buttons_layout.addWidget(self.start_server_button)
+        self.server_buttons_layout.addWidget(self.stop_server_button)
+        self.server_buttons_layout.addWidget(self.server_status_label)
+        self.server_buttons_layout.addStretch()
+        self.server_control_layout.addLayout(self.server_buttons_layout)
+        
+        # Server URLs display
+        self.server_urls_label = QtWidgets.QLabel(self.server_control_group_box)
+        self.server_urls_label.setObjectName('server_urls_label')
+        self.server_urls_label.setWordWrap(True)
+        self.server_urls_label.setOpenExternalLinks(True)
+        self.server_urls_label.hide()  # Initially hidden
+        self.server_control_layout.addWidget(self.server_urls_label)
+        
+        self.left_layout.addWidget(self.server_control_group_box)
         
         # Video Quality Settings group box
         self.video_quality_group_box = QtWidgets.QGroupBox(self.left_column)
@@ -104,14 +178,32 @@ class MCPTab(SettingsTab):
         self.left_layout.addStretch()
         
         # Connect signals
+        self.port_spin_box.valueChanged.connect(self.on_port_changed)
+        self.host_combo_box.currentTextChanged.connect(self.on_host_changed)
+        self.auto_start_check_box.toggled.connect(self.on_auto_start_toggled)
+        self.start_server_button.clicked.connect(self.on_start_server_clicked)
+        self.stop_server_button.clicked.connect(self.on_stop_server_clicked)
         self.quality_combo_box.currentTextChanged.connect(self.on_quality_changed)
         self.keep_downloads_check_box.toggled.connect(self.on_keep_downloads_toggled)
         self.download_location_button.clicked.connect(self.on_download_location_button_clicked)
+        
+        # Update server status initially
+        self.update_server_status()
 
     def retranslate_ui(self):
         """
         Translate the UI text
         """
+        self.server_control_group_box.setTitle(translate('MCPPlugin.MCPTab', 'MCP Server Control'))
+        self.server_info_label.setText(translate('MCPPlugin.MCPTab',
+            'The MCP server allows AI models to control OpenLP. '
+            'Configure the port and start/stop the server as needed.'))
+        self.port_label.setText(translate('MCPPlugin.MCPTab', 'Port:'))
+        self.host_label.setText(translate('MCPPlugin.MCPTab', 'Host:'))
+        self.auto_start_check_box.setText(translate('MCPPlugin.MCPTab', 'Auto-start server when OpenLP starts'))
+        self.start_server_button.setText(translate('MCPPlugin.MCPTab', 'Start Server'))
+        self.stop_server_button.setText(translate('MCPPlugin.MCPTab', 'Stop Server'))
+        
         self.video_quality_group_box.setTitle(translate('MCPPlugin.MCPTab', 'Video Download Quality'))
         self.quality_info_label.setText(translate('MCPPlugin.MCPTab',
             'Choose the quality for video downloads from platforms like YouTube. '
@@ -135,6 +227,105 @@ class MCPTab(SettingsTab):
         
         for i, name in enumerate(quality_names):
             self.quality_combo_box.setItemText(i, name)
+            
+        # Update server status text
+        self.update_server_status()
+
+    def on_port_changed(self):
+        """Port value changed"""
+        self.changed = True
+        # If server is running, restart it with new port
+        self._restart_server_if_running()
+
+    def on_host_changed(self):
+        """Host value changed"""
+        self.changed = True
+        # If server is running, restart it with new host
+        self._restart_server_if_running()
+
+    def _restart_server_if_running(self):
+        """Restart server if it's currently running"""
+        try:
+            plugin = Registry().get('plugin_manager').get_plugin_by_name('mcp')
+            if plugin and plugin.is_server_running():
+                # Save settings first
+                self.save()
+                # Restart server
+                plugin.restart_server()
+                # Update status
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1000, self.update_server_status)  # Update status after a delay
+        except Exception as e:
+            log.debug(f'Could not restart server: {e}')
+
+    def on_auto_start_toggled(self):
+        """Auto-start option toggled"""
+        self.changed = True
+
+    def on_start_server_clicked(self):
+        """Start server button clicked"""
+        try:
+            plugin = Registry().get('plugin_manager').get_plugin_by_name('mcp')
+            if plugin:
+                plugin.start_server()
+                self.update_server_status()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 
+                translate('MCPPlugin.MCPTab', 'Error'), 
+                translate('MCPPlugin.MCPTab', 'Failed to start server: {error}').format(error=str(e)))
+
+    def on_stop_server_clicked(self):
+        """Stop server button clicked"""
+        try:
+            plugin = Registry().get('plugin_manager').get_plugin_by_name('mcp')
+            if plugin:
+                plugin.stop_server()
+                self.update_server_status()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 
+                translate('MCPPlugin.MCPTab', 'Error'), 
+                translate('MCPPlugin.MCPTab', 'Failed to stop server: {error}').format(error=str(e)))
+
+    def update_server_status(self):
+        """Update the server status display"""
+        try:
+            plugin = Registry().get('plugin_manager').get_plugin_by_name('mcp')
+            if plugin and plugin.is_server_running():
+                # Get current settings
+                host = self.settings.value('mcp/host')
+                port = self.settings.value('mcp/port')
+                
+                # Update status
+                self.server_status_label.setText(
+                    translate('MCPPlugin.MCPTab', 'Running on {host}:{port}').format(host=host, port=port))
+                self.server_status_label.setStyleSheet('color: green;')
+                self.start_server_button.setEnabled(False)
+                self.stop_server_button.setEnabled(True)
+                
+                # Show server URLs
+                urls = plugin.get_server_urls()
+                if urls:
+                    url_links = []
+                    for url in urls:
+                        url_links.append(f'<a href="{url}">{url}</a>')
+                    
+                    self.server_urls_label.setText(
+                        translate('MCPPlugin.MCPTab', 'Server accessible at:<br/>{}').format('<br/>'.join(url_links)))
+                    self.server_urls_label.show()
+                else:
+                    self.server_urls_label.hide()
+            else:
+                self.server_status_label.setText(translate('MCPPlugin.MCPTab', 'Stopped'))
+                self.server_status_label.setStyleSheet('color: red;')
+                self.start_server_button.setEnabled(True)
+                self.stop_server_button.setEnabled(False)
+                self.server_urls_label.hide()
+        except Exception:
+            self.server_status_label.setText(translate('MCPPlugin.MCPTab', 'Unknown'))
+            self.server_status_label.setStyleSheet('color: orange;')
+            self.start_server_button.setEnabled(True)
+            self.stop_server_button.setEnabled(True)
+            self.server_urls_label.hide()
 
     def on_quality_changed(self):
         """Quality selection changed"""
@@ -159,7 +350,18 @@ class MCPTab(SettingsTab):
         """
         Load the settings into the UI.
         """
-        # Get the actual quality values for internal use
+        # Load server settings
+        self.port_spin_box.setValue(self.settings.value('mcp/port'))
+        host_value = self.settings.value('mcp/host')
+        # Set host combo box value
+        index = self.host_combo_box.findText(host_value)
+        if index >= 0:
+            self.host_combo_box.setCurrentIndex(index)
+        else:
+            self.host_combo_box.setCurrentText(host_value)  # Custom value
+        self.auto_start_check_box.setChecked(self.settings.value('mcp/auto_start'))
+        
+        # Load video quality settings
         quality_values = [
             'bestvideo[vcodec^=avc]+bestaudio/bestvideo+bestaudio/best',
             'bestvideo[height<=2160][vcodec^=avc]+bestaudio/bestvideo[height<=2160]+bestaudio/best',
@@ -178,13 +380,19 @@ class MCPTab(SettingsTab):
         self.keep_downloads_check_box.setChecked(self.settings.value('mcp/keep_downloads'))
         self.download_location_edit.setText(self.settings.value('mcp/download_location'))
         
+        self.update_server_status()
         self.changed = False
 
     def save(self):
         """
         Save the settings from the UI.
         """
-        # Map display index back to actual quality values
+        # Save server settings
+        self.settings.setValue('mcp/port', self.port_spin_box.value())
+        self.settings.setValue('mcp/host', self.host_combo_box.currentText())
+        self.settings.setValue('mcp/auto_start', self.auto_start_check_box.isChecked())
+        
+        # Save video quality settings
         quality_values = [
             'bestvideo[vcodec^=avc]+bestaudio/bestvideo+bestaudio/best',
             'bestvideo[height<=2160][vcodec^=avc]+bestaudio/bestvideo[height<=2160]+bestaudio/best',

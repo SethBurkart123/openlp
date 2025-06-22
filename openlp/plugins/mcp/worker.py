@@ -53,7 +53,6 @@ class MCPWorker(QtCore.QObject):
     load_service_requested = QtCore.Signal(str)  # file_path
     save_service_requested = QtCore.Signal(str)  # file_path (optional)
     get_service_items_requested = QtCore.Signal()
-    add_song_requested = QtCore.Signal(str, str, str)  # title, author, lyrics
     add_custom_slide_requested = QtCore.Signal(str, str)  # title, content
     add_media_requested = QtCore.Signal(str, str)  # file_path, title
     go_live_requested = QtCore.Signal(int)  # item_index
@@ -62,6 +61,11 @@ class MCPWorker(QtCore.QObject):
     list_themes_requested = QtCore.Signal()
     set_theme_requested = QtCore.Signal(str)  # theme_name
     create_from_structure_requested = QtCore.Signal(object)  # service_structure
+    
+    # Plugin search and add signals
+    search_songs_requested = QtCore.Signal(str)  # text
+    create_song_requested = QtCore.Signal(str, str, str)  # title, lyrics, author
+    add_song_by_id_requested = QtCore.Signal(int)  # song_id
     
     # Theme management signals
     create_theme_requested = QtCore.Signal(object)  # theme_data
@@ -73,7 +77,6 @@ class MCPWorker(QtCore.QObject):
     # Per-item theme management signals
     set_item_theme_requested = QtCore.Signal(int, str)  # item_index, theme_name
     get_item_theme_requested = QtCore.Signal(int)  # item_index
-    clear_item_theme_requested = QtCore.Signal(int)  # item_index
     
     # Result signals
     operation_completed = QtCore.Signal(object)  # result
@@ -93,7 +96,6 @@ class MCPWorker(QtCore.QObject):
         self.load_service_requested.connect(self.load_service)
         self.save_service_requested.connect(self.save_service)
         self.get_service_items_requested.connect(self.get_service_items)
-        self.add_song_requested.connect(self.add_song)
         self.add_custom_slide_requested.connect(self.add_custom_slide)
         self.add_media_requested.connect(self.add_media)
         self.go_live_requested.connect(self.go_live)
@@ -102,6 +104,11 @@ class MCPWorker(QtCore.QObject):
         self.list_themes_requested.connect(self.list_themes)
         self.set_theme_requested.connect(self.set_theme)
         self.create_from_structure_requested.connect(self.create_from_structure)
+        
+        # Connect plugin search and add signals
+        self.search_songs_requested.connect(self.search_songs)
+        self.create_song_requested.connect(self.create_song)
+        self.add_song_by_id_requested.connect(self.add_song_by_id)
         
         # Connect theme management signals
         self.create_theme_requested.connect(self.create_theme)
@@ -113,7 +120,6 @@ class MCPWorker(QtCore.QObject):
         # Connect per-item theme management signals
         self.set_item_theme_requested.connect(self.set_item_theme)
         self.get_item_theme_requested.connect(self.get_item_theme)
-        self.clear_item_theme_requested.connect(self.clear_item_theme)
         
         self.operation_completed.connect(self._handle_result)
         
@@ -195,69 +201,6 @@ class MCPWorker(QtCore.QObject):
             self.operation_completed.emit(items)
         except Exception as e:
             self.operation_completed.emit([{"error": str(e)}])
-    
-    @QtCore.Slot(str, str, str)
-    def add_song(self, title, author, lyrics):
-        try:
-            songs_plugin = Registry().get('plugin_manager').get_plugin_by_name('songs')
-            if not songs_plugin or not songs_plugin.is_active():
-                self.operation_completed.emit("Songs plugin not available")
-                return
-            
-            # Simple song search by title
-            from openlp.plugins.songs.lib.db import Song
-            existing_songs = songs_plugin.manager.get_all_objects(Song, Song.title == title)
-            
-            if existing_songs:
-                # Found existing song, use it
-                song = existing_songs[0]
-                try:
-                    from PySide6.QtWidgets import QListWidgetItem
-                    from PySide6.QtCore import Qt
-                    mock_item = QListWidgetItem()
-                    mock_item.setData(Qt.ItemDataRole.UserRole, song.id)
-                    
-                    media_item = songs_plugin.media_item
-                    service_item = ServiceItem(songs_plugin)
-                    service_item.add_icon()
-                    
-                    if media_item.generate_slide_data(service_item, item=mock_item):
-                        service_manager = Registry().get('service_manager')
-                        service_manager.add_service_item(service_item)
-                        service_manager.repaint_service_list(-1, -1)
-                        self.operation_completed.emit(f"Song '{song.title}' added from database")
-                    else:
-                        self._create_song_placeholder(songs_plugin, title, lyrics)
-                        self.operation_completed.emit(f"Song '{title}' found but failed to load - added placeholder")
-                except Exception:
-                    self._create_song_placeholder(songs_plugin, title, lyrics)
-                    self.operation_completed.emit(f"Song '{title}' found but failed to load - added placeholder")
-            else:
-                # No existing song, create placeholder
-                self._create_song_placeholder(songs_plugin, title, lyrics)
-                self.operation_completed.emit(f"Song '{title}' not found in database - added placeholder")
-        except Exception as e:
-            self.operation_completed.emit(f"Error adding song: {str(e)}")
-    
-    def _create_song_placeholder(self, songs_plugin, title, lyrics):
-        """Helper method to create a song placeholder."""
-        service_item = ServiceItem(songs_plugin)
-        service_item.title = title
-        service_item.name = 'songs'
-        service_item.service_item_type = ServiceItemType.Text
-        service_item.add_icon()
-        
-        if lyrics:
-            verses = lyrics.split('\n\n')
-            for verse in verses:
-                if verse.strip():
-                    service_item.add_from_text(verse.strip())
-        else:
-            service_item.add_from_text(f"Song: {title}\n\n(Lyrics not available)")
-        
-        service_manager = Registry().get('service_manager')
-        service_manager.add_service_item(service_item)
-        service_manager.repaint_service_list(-1, -1)
     
     @QtCore.Slot(str, str)
     def add_custom_slide(self, title, content):
@@ -1037,11 +980,202 @@ class MCPWorker(QtCore.QObject):
         except Exception as e:
             self.operation_completed.emit(f"Error getting item theme: {str(e)}")
 
-    @QtCore.Slot(int)
-    def clear_item_theme(self, item_index):
-        """Clear the theme for a specific service item (fall back to service/global theme)."""
+    # Plugin Search and Add Methods
+    @QtCore.Slot(str)
+    def search_songs(self, text):
+        """Search for songs in the songs plugin and return results with [id, title, alternate_title] format."""
         try:
-            # Use the set_item_theme method with None to clear the theme
-            self.set_item_theme(item_index, None)
+            # Validate input
+            if not text or not text.strip():
+                self.operation_completed.emit([])
+                return
+            
+            # Check if songs plugin is available and active
+            plugin_manager = Registry().get('plugin_manager')
+            if not plugin_manager:
+                log.error("Plugin manager not available")
+                self.operation_completed.emit([])
+                return
+                
+            songs_plugin = plugin_manager.get_plugin_by_name('songs')
+            if not songs_plugin:
+                log.error("Songs plugin not found")
+                self.operation_completed.emit([])
+                return
+                
+            from openlp.core.common.enum import PluginStatus
+            if songs_plugin.status != PluginStatus.Active:
+                log.error("Songs plugin is not active")
+                self.operation_completed.emit([])
+                return
+            
+            # Perform search using API
+            from openlp.core.api.versions.v2.plugins import search
+            results = search('songs', text.strip())
+            
+            if results is None:
+                log.debug(f"No songs found for search: {text}")
+                self.operation_completed.emit([])
+            else:
+                log.debug(f"Found {len(results)} songs for search: {text}")
+                self.operation_completed.emit(results)
+                
         except Exception as e:
-            self.operation_completed.emit(f"Error clearing item theme: {str(e)}") 
+            log.error(f"Error searching songs with text '{text}': {e}", exc_info=True)
+            self.operation_completed.emit([])
+
+    @QtCore.Slot(str, str, str)
+    def create_song(self, title, lyrics, author):
+        """Create a new song in the database."""
+        try:
+            songs_plugin = Registry().get('plugin_manager').get_plugin_by_name('songs')
+            if not songs_plugin or not songs_plugin.is_active():
+                self.operation_completed.emit("Error: Songs plugin not available")
+                return
+            
+            # Import necessary classes
+            from openlp.plugins.songs.lib.db import Song, Author
+            from openlp.plugins.songs.lib import clean_song, VerseType
+            from openlp.plugins.songs.lib.openlyricsxml import SongXML
+            
+            # Create the song
+            song = Song()
+            song.title = title.strip()
+            
+            # Process lyrics into proper XML format
+            song_xml = SongXML()
+            lyrics_text = lyrics.strip()
+            
+            # Parse verse labels like [Verse 1], [Chorus], etc.
+            import re
+            verse_pattern = re.compile(r'^\[(.*?)\]', re.MULTILINE)
+            
+            # Map common verse types to OpenLP VerseType
+            verse_type_map = {
+                'verse': VerseType.Verse,
+                'chorus': VerseType.Chorus,
+                'bridge': VerseType.Bridge,
+                'pre-chorus': VerseType.PreChorus,
+                'intro': VerseType.Intro,
+                'ending': VerseType.Ending,
+                'outro': VerseType.Ending,
+                'tag': VerseType.Other,
+                'other': VerseType.Other
+            }
+            
+            # Split by verse markers
+            sections = verse_pattern.split(lyrics_text)
+            
+            if len(sections) > 1:
+                # Has verse markers - process each section
+                verse_order = []
+                for i in range(1, len(sections), 2):
+                    if i + 1 < len(sections):
+                        label = sections[i].strip().lower()
+                        content = sections[i + 1].strip()
+                        
+                        if content:  # Only add non-empty sections
+                            # Extract verse type and number
+                            verse_type = VerseType.Verse  # default
+                            verse_number = 1
+                            
+                            # Parse label like "Verse 1", "Chorus", "Bridge"
+                            for key, vtype in verse_type_map.items():
+                                if key in label:
+                                    verse_type = vtype
+                                    break
+                            
+                            # Extract number if present
+                            number_match = re.search(r'(\d+)', label)
+                            if number_match:
+                                verse_number = int(number_match.group(1))
+                            
+                            song_xml.add_verse_to_lyrics(VerseType.tags[verse_type], verse_number, content)
+                            verse_order.append(f'{VerseType.tags[verse_type]}{verse_number}')
+                
+                # Set verse order
+                song.verse_order = ' '.join(verse_order)
+            else:
+                # No verse markers - treat as single verse
+                if lyrics_text:
+                    song_xml.add_verse_to_lyrics(VerseType.tags[VerseType.Verse], 1, lyrics_text)
+            
+            song.lyrics = song_xml.extract_xml()
+            
+            # If author is provided, find or create the author
+            if author and author.strip():
+                author_name = author.strip()
+                existing_author = songs_plugin.manager.get_object_filtered(Author, Author.display_name == author_name)
+                if not existing_author:
+                    # Create new author
+                    name_parts = author_name.rsplit(' ', 1)
+                    first_name = name_parts[0] if name_parts else ''
+                    last_name = name_parts[1] if len(name_parts) > 1 else ''
+                    existing_author = Author(
+                        first_name=first_name,
+                        last_name=last_name,
+                        display_name=author_name
+                    )
+                song.add_author(existing_author)
+            
+            # Clean and save the song
+            clean_song(songs_plugin.manager, song)
+            songs_plugin.manager.save_object(song)
+            
+            # Return success message with song ID
+            author_text = f" by {author}" if author and author.strip() else ""
+            self.operation_completed.emit(f"Song '{song.title}'{author_text} created successfully (ID: {song.id})")
+            
+        except Exception as e:
+            error_msg = f"Error creating song '{title}': {str(e)}"
+            log.error(error_msg, exc_info=True)
+            self.operation_completed.emit(f"Error: {error_msg}")
+
+    @QtCore.Slot(int)
+    def add_song_by_id(self, song_id):
+        """Add a song to the service by its database ID."""
+        try:
+            songs_plugin = Registry().get('plugin_manager').get_plugin_by_name('songs')
+            if not songs_plugin or not songs_plugin.is_active():
+                self.operation_completed.emit("Error: Songs plugin not available")
+                return
+            
+            # Get the song from database
+            from openlp.plugins.songs.lib.db import Song
+            song = songs_plugin.manager.get_object(Song, song_id)
+            if not song:
+                self.operation_completed.emit(f"Error: Song with ID {song_id} not found")
+                return
+            
+            # Create a mock item to represent the song
+            from PySide6.QtWidgets import QListWidgetItem
+            from PySide6.QtCore import Qt
+            mock_item = QListWidgetItem()
+            mock_item.setData(Qt.ItemDataRole.UserRole, song_id)
+            
+            # Build the service item using the songs plugin's media item
+            from openlp.core.lib.serviceitem import ServiceItem
+            from openlp.core.lib import ServiceItemContext
+            service_item = ServiceItem(songs_plugin)
+            service_item.add_icon()
+            
+            # Use the songs plugin's generate_slide_data method
+            if songs_plugin.media_item.generate_slide_data(service_item, item=mock_item, context=ServiceItemContext.Service):
+                service_item.from_plugin = False
+                
+                # Add the service item to the service
+                service_manager = Registry().get('service_manager')
+                service_manager.add_service_item(service_item)
+                
+                success_msg = f"Song '{song.title}' (ID: {song_id}) added to service"
+                log.info(success_msg)
+                self.operation_completed.emit(success_msg)
+            else:
+                error_msg = f"Failed to generate service item for song ID {song_id}"
+                log.error(error_msg)
+                self.operation_completed.emit(f"Error: {error_msg}")
+                
+        except Exception as e:
+            error_msg = f"Error adding song ID {song_id} to service: {str(e)}"
+            log.error(error_msg, exc_info=True)
+            self.operation_completed.emit(f"Error: {error_msg}") 
