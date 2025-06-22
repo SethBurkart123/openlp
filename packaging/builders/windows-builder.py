@@ -228,11 +228,13 @@ class WindowsBuilder(Builder):
         self._print_verbose('Reading base WiX file')
         with open(os.path.join(config_dir, 'OpenLP-base.wxs'), 'rt') as base_file:
             xml = base_file.read()
-        if '.dev' in self.version:
-            windows_version = self.version.replace('.dev', '.')
+        # Strip the 'v' prefix if present to make version compatible with PEP440
+        version_for_conversion = self.version.lstrip('v') if self.version.startswith('v') else self.version
+        if '.dev' in version_for_conversion:
+            windows_version = version_for_conversion.replace('.dev', '.')
             windows_version = windows_version.rsplit('+', 1)[0]
         else:
-            windows_version = self._pep440_to_windows_version(self.version)
+            windows_version = self._pep440_to_windows_version(version_for_conversion)
         xml = xml % {
             'dialog': os.path.join(config_dir, 'WizardMain.bmp'),
             'banner': os.path.join(config_dir, 'WizardBanner.bmp'),
@@ -304,12 +306,14 @@ class WindowsBuilder(Builder):
         """
         self._print_verbose('... Creating PortableApps appinfo file ...')
         config_dir = os.path.dirname(self.config_path)
-        if '.dev' in self.version:
-            version, revision = self.version.split('.dev')
+        # Strip the 'v' prefix if present to make version compatible with PEP440
+        version_for_conversion = self.version.lstrip('v') if self.version.startswith('v') else self.version
+        if '.dev' in version_for_conversion:
+            version, revision = version_for_conversion.split('.dev')
             version = version + '.0' * (2 - version.count('.'))
             self.portable_version = version + '.' + revision.split('+')[0]
         else:
-            self.portable_version = self._pep440_to_windows_version(self.version)
+            self.portable_version = self._pep440_to_windows_version(version_for_conversion)
         with open(os.path.join(config_dir, 'appinfo.ini.default'), 'r') as input_file, \
                 open(os.path.join(self.portable_dest_path, 'App', 'Appinfo', 'appinfo.ini'), 'w') as output_file:
             content = input_file.read()

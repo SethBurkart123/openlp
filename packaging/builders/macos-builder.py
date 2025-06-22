@@ -312,7 +312,9 @@ class MacOSBuilder(Builder):
         with open(os.path.join(self.dist_app_path, 'Contents', os.path.basename(self.bundle_info_path)), 'w') as fw, \
                 open(self.bundle_info_path, 'r') as fr:
             text = fr.read()
-            text = text % {'openlp_version': self._pep440_to_mac_version(self.version)}
+            # Strip the 'v' prefix if present to make version compatible with PEP440
+            version_for_conversion = self.version.lstrip('v') if self.version.startswith('v') else self.version
+            text = text % {'openlp_version': self._pep440_to_mac_version(version_for_conversion)}
             fw.write(text)
 
     def _copy_macos_files(self):
