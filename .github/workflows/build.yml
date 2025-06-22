@@ -52,7 +52,7 @@ jobs:
         PYTHONPATH: packaging/builders
     
     - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: windows-${{ matrix.arch }}-installer
         path: build/OpenLP-*.exe
@@ -100,7 +100,7 @@ jobs:
         PYENCHANT_LIBRARY_PATH: /opt/homebrew/lib/libenchant-2.2.dylib
     
     - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos-dmg
         path: build/OpenLP-*.dmg
@@ -114,7 +114,7 @@ jobs:
     
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
     
     - name: Create Release
       uses: softprops/action-gh-release@v1
