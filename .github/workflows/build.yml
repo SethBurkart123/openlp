@@ -112,6 +112,18 @@ jobs:
       env:
         PYTHONPATH: packaging/builders
     
+    - name: List dist folder contents
+      run: |
+        Write-Host "Contents of dist folder:"
+        if (Test-Path "dist") {
+          Get-ChildItem -Path "dist" -Recurse | ForEach-Object {
+            $relativePath = $_.FullName.Replace((Get-Location).Path, "").TrimStart('\')
+            Write-Host "  $relativePath"
+          }
+        } else {
+          Write-Host "  dist folder not found"
+        }
+    
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
       with:
