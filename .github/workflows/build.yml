@@ -27,10 +27,17 @@ jobs:
     
     - name: Install system dependencies
       run: |
-        # Install WiX Toolset
-        choco install wixtoolset --version=3.14.0 -y
-        # Add WiX to PATH
-        echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $GITHUB_PATH
+        # WiX Toolset is already installed on GitHub runners, just add to PATH
+        # Add WiX to PATH (check both possible locations)
+        if (Test-Path "C:\Program Files (x86)\WiX Toolset v3.14\bin") {
+          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+        } elseif (Test-Path "C:\Program Files\WiX Toolset v3.14\bin") {
+          echo "C:\Program Files\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+        } else {
+          # If not found, install it
+          choco install wixtoolset -y
+          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+        }
     
     - name: Install Python dependencies
       run: |
