@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x86, x64]
+        arch: [x64]
     
     steps:
     - name: Checkout code
@@ -113,9 +113,58 @@ jobs:
         path: dist/OpenLP-*.dmg
         if-no-files-found: warn
 
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Flatpak and dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y flatpak flatpak-builder python3-requests python3-ruamel.yaml python3-lxml
+        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        sudo flatpak install -y flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 io.qt.PySide.BaseApp//6.8
+    
+    - name: Generate Python dependencies
+      run: |
+        cd packaging/flatpak
+        # Get the flatpak-pip-generator tool
+        curl -O https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
+        chmod +x flatpak-pip-generator
+        python3 flatpak-pip-generator --requirements-file requirements.txt
+    
+    - name: Build Flatpak
+      run: |
+        cd packaging/flatpak
+        mkdir -p repo
+        flatpak-builder --install-deps-from=flathub --force-clean --repo=repo build-dir org.openlp.OpenLP.yml
+    
+    - name: Create Flatpak bundle
+      run: |
+        cd packaging/flatpak
+        # Get version from git
+        VERSION=$(git describe --tags --always)
+        flatpak build-bundle repo openlp-${VERSION}.flatpak org.openlp.OpenLP
+    
+    - name: Upload Linux artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-flatpak
+        path: packaging/flatpak/openlp-*.flatpak
+        if-no-files-found: warn
+
   # Optional: Create a release if this is a tag push
   release:
-    needs: [build-windows, build-macos]
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     
@@ -130,6 +179,7 @@ jobs:
           windows-x86-installer/*
           windows-x64-installer/*
           macos-dmg/*
+          linux-flatpak/*
         draft: true
         prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
       env:
