@@ -116,7 +116,9 @@ class WindowsBuilder(Builder):
 
     def _pep440_to_windows_version(self, version: str) -> str:
         """Convert a PEP440-compatible version string to a Windows version string"""
+        self._print_verbose('Converting version: {}'.format(version))
         if pep440 := self.parse_pep440_version(version):
+            self._print_verbose('Parsed as PEP440: {}'.format(pep440))
             build_number = 0
             if pep440.is_devrelease:
                 build_number = pep440.dev
@@ -129,14 +131,18 @@ class WindowsBuilder(Builder):
                     build_number = 3000 + pep440.pre[1]
             else:
                 build_number = 5000
-            return f'{pep440.base_version}.{build_number}'
+            result = f'{pep440.base_version}.{build_number}'
+            self._print_verbose('PEP440 result: {}'.format(result))
+            return result
         else:
+            self._print_verbose('Not valid PEP440, trying regex patterns')
             # Handle common git tag formats that aren't valid PEP440
             import re
             # Try to match patterns like "3.1.2-beta.11", "3.1.2-alpha.5", "3.1.2-rc.1"
             match = re.match(r'^(\d+\.\d+\.\d+)-?(alpha|beta|rc)\.?(\d+)$', version)
             if match:
                 base_version, pre_type, pre_number = match.groups()
+                self._print_verbose('Regex match: base={}, type={}, number={}'.format(base_version, pre_type, pre_number))
                 pre_number = int(pre_number)
                 if pre_type == 'alpha':
                     build_number = 1000 + pre_number
@@ -144,14 +150,19 @@ class WindowsBuilder(Builder):
                     build_number = 2000 + pre_number
                 elif pre_type == 'rc':
                     build_number = 3000 + pre_number
-                return f'{base_version}.{build_number}'
+                result = f'{base_version}.{build_number}'
+                self._print_verbose('Regex result: {}'.format(result))
+                return result
             
             # Try to match simple version patterns like "3.1.2"
             match = re.match(r'^(\d+\.\d+\.\d+)$', version)
             if match:
-                return f'{match.group(1)}.5000'
+                result = f'{match.group(1)}.5000'
+                self._print_verbose('Simple version result: {}'.format(result))
+                return result
             
             # Fallback
+            self._print_verbose('Using fallback version: 0.0.0.0')
             return '0.0.0.0'
 
     def _walk_dirs(self, dir_dict, path):
@@ -251,11 +262,14 @@ class WindowsBuilder(Builder):
             xml = base_file.read()
         # Strip the 'v' prefix if present to make version compatible with PEP440
         version_for_conversion = self.version.lstrip('v') if self.version.startswith('v') else self.version
+        self._print_verbose('Original version: {}'.format(self.version))
+        self._print_verbose('Version for conversion: {}'.format(version_for_conversion))
         if '.dev' in version_for_conversion:
             windows_version = version_for_conversion.replace('.dev', '.')
             windows_version = windows_version.rsplit('+', 1)[0]
         else:
             windows_version = self._pep440_to_windows_version(version_for_conversion)
+        self._print_verbose('Windows version: {}'.format(windows_version))
         xml = xml % {
             'dialog': os.path.join(config_dir, 'WizardMain.bmp'),
             'banner': os.path.join(config_dir, 'WizardBanner.bmp'),

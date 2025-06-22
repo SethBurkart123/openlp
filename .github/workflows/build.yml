@@ -108,7 +108,7 @@ jobs:
     - name: Build Windows installer
       run: |
         cd packaging/builders
-        python windows-builder.py --config ../windows/config.ini --skip-update
+        python windows-builder.py --config ../windows/config.ini --skip-update --verbose
       env:
         PYTHONPATH: packaging/builders
     
