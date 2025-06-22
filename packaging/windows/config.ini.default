@@ -6,10 +6,10 @@ light = %(progfiles)s\WiX Toolset v3.14\bin\light.exe
 
 [paths]
 branch = %(here)s\..\..
-icon = %(here)s\windows\OpenLP.ico
-hooks = %(here)s\pyinstaller-hooks
+icon = %(here)s\OpenLP.ico
+hooks = %(here)s\..\pyinstaller-hooks
 license = %(here)s\LICENSE.txt
-portable_source = %(here)s\windows\OpenLPPortable
+portable_source = %(here)s\OpenLPPortable
 portable_dest = %(projects)s\OpenLPPortable
 
 [transifex]
