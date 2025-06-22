@@ -131,6 +131,27 @@ class WindowsBuilder(Builder):
                 build_number = 5000
             return f'{pep440.base_version}.{build_number}'
         else:
+            # Handle common git tag formats that aren't valid PEP440
+            import re
+            # Try to match patterns like "3.1.2-beta.11", "3.1.2-alpha.5", "3.1.2-rc.1"
+            match = re.match(r'^(\d+\.\d+\.\d+)-?(alpha|beta|rc)\.?(\d+)$', version)
+            if match:
+                base_version, pre_type, pre_number = match.groups()
+                pre_number = int(pre_number)
+                if pre_type == 'alpha':
+                    build_number = 1000 + pre_number
+                elif pre_type == 'beta':
+                    build_number = 2000 + pre_number
+                elif pre_type == 'rc':
+                    build_number = 3000 + pre_number
+                return f'{base_version}.{build_number}'
+            
+            # Try to match simple version patterns like "3.1.2"
+            match = re.match(r'^(\d+\.\d+\.\d+)$', version)
+            if match:
+                return f'{match.group(1)}.5000'
+            
+            # Fallback
             return '0.0.0.0'
 
     def _walk_dirs(self, dir_dict, path):
