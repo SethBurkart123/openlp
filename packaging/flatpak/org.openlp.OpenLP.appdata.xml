@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='utf8'?>
+<component type="desktop-application">
+  <id>org.openlp.OpenLP</id>
+  <launchable type="desktop-id">org.openlp.OpenLP.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>OpenLP</name>
+  <summary>OpenLP - Church presentation software</summary>
+  <description>
+    <p>
+      OpenLP is a free and open source cross-platform presentation tool
+      useful for churches. It provides presentation features for songs,
+      scriptures, media and more.
+      NOTE: This distribution does not provide LibreOffice integration.
+    </p>
+  </description>
+  <categories>
+    <category>Presentation</category>
+    <category>Video</category>
+    <category>AudioVideo</category>
+    <category>Player</category>
+    <category>Spirituality</category>
+    <category>Music</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <url type="homepage">https://www.openlp.org/</url>
+  <url type="bugtracker">https://gitlab.com/openlp/openlp/-/issues</url>
+  <url type="donation">https://openlp.org/contribute</url>
+  <releases>
+    <release version="3.1.6-1" date="2025-01-11"/>
+    <release version="3.1.3-1" date="2024-08-24"/>
+    <release version="3.1.2-1" date="2024-05-17"/>
+    <release version="3.1.1-1" date="2024-03-10"/>
+    <release version="2.9.1-1" date="2020-05-30"/>
+  </releases>
+  <project_group>OpenLP</project_group>
+  <project_license>GPL-3.0+</project_license>
+  <developer_name>OpenLP et al.</developer_name>
+  <update_contact/>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://openlp.org/screenshots/mainwindow.png</image>
+    </screenshot>
+  </screenshots>
+</component>

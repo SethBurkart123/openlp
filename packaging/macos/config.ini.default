@@ -1,0 +1,16 @@
+[executables]
+
+[paths]
+branch = %(here)s/../..
+icon = %(here)s/OpenLP.icns
+bundle_info = %(here)s/Info.plist
+hooks = %(here)s/../pyinstaller-hooks
+dmg_settings = %(here)s/settings.py
+license = %(here)s/LICENSE.txt
+
+[transifex]
+username =
+password =
+
+[codesigning]
+certificate = org.openlp.OpenLP

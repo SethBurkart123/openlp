@@ -1,0 +1,39 @@
+app-id: org.openlp.OpenLP
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.8'
+command: openlp
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --share=network
+  - --socket=pulseaudio
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --filesystem=host
+modules:
+  - python3-requirements.json
+  - name: OpenLP
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/openlp/i18n
+      - cd resources/i18n; for file in *.ts; do lconvert -i $file -o /app/share/openlp/i18n/${file%%ts}qm
+        ; done; cd ../..
+      - pip install --no-deps --no-build-isolation --prefix=$FLATPAK_DEST .
+      - mkdir -p /app/share/applications && cp resources/openlp.desktop /app/share/applications/org.openlp.OpenLP.desktop
+        && sed -ie s/Icon=openlp/Icon=org.openlp.OpenLP/ /app/share/applications/org.openlp.OpenLP.desktop
+      - mkdir -p /app/share/icons/hicolor/256x256/apps/ && cp resources/images/openlp-logo-256x256.png
+        /app/share/icons/hicolor/256x256/apps/org.openlp.OpenLP.png
+      - mkdir -p /app/share/icons/hicolor/scalable/apps/ && cp resources/images/openlp-logo.svg
+        /app/share/icons/hicolor/scalable/apps/org.openlp.OpenLP.svg
+      - install -Dm 644 -t /app/share/appdata/ org.openlp.OpenLP.appdata.xml
+    sources:
+      - type: archive
+        url: https://gitlab.com/openlp/openlp/-/archive/3.1.6/openlp-3.1.6.tar.gz
+        sha256: 1d81bc60f0de2b8f691031ba86910124f4f66dd76366f20fc1f70f91fa2a453b
+      - type: file
+        path: org.openlp.OpenLP.appdata.xml

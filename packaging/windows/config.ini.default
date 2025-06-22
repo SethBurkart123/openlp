@@ -1,0 +1,17 @@
+[executables]
+portablelauncher = %(progfiles)s\PortableApps.comLauncher\PortableApps.comLauncherGenerator.exe
+portableinstaller = %(progfiles)s\PortableApps.comInstaller\PortableApps.comInstaller.exe
+candle = %(progfiles)s\WiX Toolset v3.14\bin\candle.exe
+light = %(progfiles)s\WiX Toolset v3.14\bin\light.exe
+
+[paths]
+branch = %(here)s\..\..
+icon = %(here)s\windows\OpenLP.ico
+hooks = %(here)s\pyinstaller-hooks
+license = %(here)s\LICENSE.txt
+portable_source = %(here)s\windows\OpenLPPortable
+portable_dest = %(projects)s\OpenLPPortable
+
+[transifex]
+username =
+password =

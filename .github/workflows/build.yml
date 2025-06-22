@@ -1,0 +1,129 @@
+name: Build OpenLP
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x86, x64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        architecture: ${{ matrix.arch == 'x86' && 'x86' || 'x64' }}
+    
+    - name: Install system dependencies
+      run: |
+        # Install WiX Toolset
+        choco install wixtoolset --version=3.14.0 -y
+        # Add WiX to PATH
+        echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $GITHUB_PATH
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets PyInstaller macholib lxml
+    
+    - name: Create Windows config
+      run: |
+        cd packaging/windows
+        if (!(Test-Path "config.ini")) {
+          Copy-Item "config.ini.default" "config.ini"
+        }
+    
+    - name: Build Windows installer
+      run: |
+        cd packaging/builders
+        python windows-builder.py --config ../windows/config.ini --skip-update --arch ${{ matrix.arch }}
+      env:
+        PYTHONPATH: packaging/builders
+    
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-${{ matrix.arch }}-installer
+        path: build/OpenLP-*.exe
+        if-no-files-found: warn
+
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install system dependencies
+      run: |
+        # Install enchant library
+        brew install enchant
+        # Export the library path that the builder expects
+        echo "PYENCHANT_LIBRARY_PATH=/opt/homebrew/lib/libenchant-2.2.dylib" >> $GITHUB_ENV
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 PyInstaller macholib dmgbuild
+    
+    - name: Create macOS config
+      run: |
+        cd packaging/macos
+        if [ ! -f "config.ini" ]; then
+          cp "config.ini.default" "config.ini"
+        fi
+    
+    - name: Build macOS app
+      run: |
+        cd packaging/builders
+        python macos-builder.py --config ../macos/config.ini --skip-update
+      env:
+        PYTHONPATH: packaging/builders
+        PYENCHANT_LIBRARY_PATH: /opt/homebrew/lib/libenchant-2.2.dylib
+    
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: macos-dmg
+        path: build/OpenLP-*.dmg
+        if-no-files-found: warn
+
+  # Optional: Create a release if this is a tag push
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          windows-x86-installer/*
+          windows-x64-installer/*
+          macos-dmg/*
+        draft: true
+        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
