@@ -138,8 +138,8 @@ class WindowsBuilder(Builder):
             self._print_verbose('Not valid PEP440, trying regex patterns')
             # Handle common git tag formats that aren't valid PEP440
             import re
-            # Try to match patterns like "3.1.2-beta.11", "3.1.2-alpha.5", "3.1.2-rc.1"
-            match = re.match(r'^(\d+\.\d+\.\d+)-?(alpha|beta|rc)\.?(\d+)$', version)
+            # Try to match patterns like "3.1.2-beta.dev13", "3.1.2-beta.11", "3.1.2-alpha.5", "3.1.2-rc.1"
+            match = re.match(r'^(\d+\.\d+\.\d+)-?(alpha|beta|rc)\.?dev?(\d+)$', version)
             if match:
                 base_version, pre_type, pre_number = match.groups()
                 self._print_verbose('Regex match: base={}, type={}, number={}'.format(base_version, pre_type, pre_number))
@@ -264,12 +264,20 @@ class WindowsBuilder(Builder):
         version_for_conversion = self.version.lstrip('v') if self.version.startswith('v') else self.version
         self._print_verbose('Original version: {}'.format(self.version))
         self._print_verbose('Version for conversion: {}'.format(version_for_conversion))
+        
+        # Handle .dev versions properly by converting them to Windows format
         if '.dev' in version_for_conversion:
-            windows_version = version_for_conversion.replace('.dev', '.')
-            windows_version = windows_version.rsplit('+', 1)[0]
+            # First clean up the version by removing git hash
+            clean_version = version_for_conversion.rsplit('+', 1)[0]
+            self._print_verbose('Cleaned dev version: {}'.format(clean_version))
+            
+            # Now try to convert using our enhanced method
+            windows_version = self._pep440_to_windows_version(clean_version)
+            self._print_verbose('Dev version converted to: {}'.format(windows_version))
         else:
             windows_version = self._pep440_to_windows_version(version_for_conversion)
-        self._print_verbose('Windows version: {}'.format(windows_version))
+        
+        self._print_verbose('Final Windows version: {}'.format(windows_version))
         xml = xml % {
             'dialog': os.path.join(config_dir, 'WizardMain.bmp'),
             'banner': os.path.join(config_dir, 'WizardBanner.bmp'),
