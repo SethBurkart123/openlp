@@ -84,6 +84,51 @@ class MCPToolsManager:
             self.worker.get_service_items_requested.emit()
             return self.worker.wait_for_result()
 
+        # Service item positioning tools
+        @self.mcp_server.tool()
+        def move_service_item(from_index: int, to_index: int) -> str:
+            """Move a service item from one position to another.
+            
+            Args:
+                from_index: Current position of the item (0-based index)
+                to_index: Target position for the item (0-based index)
+                
+            Examples:
+                move_service_item(0, 3)    # Move first item to 4th position
+                move_service_item(2, 0)    # Move 3rd item to the beginning
+                move_service_item(1, -1)   # Move 2nd item to the end
+            """
+            self.worker.move_service_item_requested.emit(from_index, to_index)
+            return self.worker.wait_for_result()
+
+        @self.mcp_server.tool()
+        def remove_service_item(index: int) -> str:
+            """Remove a service item at the specified position.
+            
+            Args:
+                index: Position of the item to remove (0-based index)
+                
+            Examples:
+                remove_service_item(0)     # Remove first item
+                remove_service_item(2)     # Remove 3rd item
+            """
+            self.worker.remove_service_item_requested.emit(index)
+            return self.worker.wait_for_result()
+
+        # Slide-level management tools
+        @self.mcp_server.tool()
+        def get_service_item_slides(item_index: int) -> List[Dict[str, Any]]:
+            """Get all slides within a specific service item.
+            
+            Args:
+                item_index: Index of the service item (0-based)
+                
+            Returns:
+                List of slide information including titles, text content, and slide indices
+            """
+            self.worker.get_service_item_slides_requested.emit(item_index)
+            return self.worker.wait_for_result()
+
         # Content creation tools
         @self.mcp_server.tool()
         def create_song(title: str, lyrics: str, author: str = None) -> str:
@@ -112,38 +157,51 @@ class MCPToolsManager:
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
-        def add_song_by_id(song_id: int) -> str:
-            """Add a song to the service by its database ID."""
-            self.worker.add_song_by_id_requested.emit(song_id)
+        def add_song_by_id(song_id: int, position: int = -1) -> str:
+            """Add a song to the service by its database ID. 
+            
+            Args:
+                song_id: The database ID of the song to add
+                position: Optional position to insert the song (0-based index). If not specified, appends to the end.
+                
+            Examples:
+                add_song_by_id(123)          # Adds song to the end of service
+                add_song_by_id(123, position=0)       # Adds song at the beginning
+                add_song_by_id(123, position=2)       # Adds song at position 2 (3rd item)
+            """
+            self.worker.add_song_by_id_requested.emit(song_id, position)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
-        def add_custom_slide_to_service(title: str, content: str) -> str:
-            """Add a custom slide to the current service."""
-            self.worker.add_custom_slide_requested.emit(title, content)
-            return self.worker.wait_for_result()
-
-        @self.mcp_server.tool()
-        def add_custom_slides_to_service(title: str, slides: List[str], credits: str = None) -> str:
-            """Add a custom slides item with multiple text slides to the current service.
+        def add_custom_slides_to_service(title: str, slides: List[str], credits: str = None, position: int = -1) -> str:
+            """Add custom slides to the current service. Can add single or multiple slides.
             
             Args:
                 title: The title for the custom slide item
-                slides: A list of text content for each slide
+                slides: A list of text content for each slide (use single-item list for one slide)
                 credits: Optional credits text
+                position: Optional position to insert the slides (0-based index). If not specified, appends to the end.
                 
-            Example:
+            Examples:
+                # Single slide
                 add_custom_slides_to_service(
-                    title="Welcome Announcements",
+                    title="Welcome",
+                    slides=["Welcome to our service!"]
+                )
+                
+                # Multiple slides at specific position
+                add_custom_slides_to_service(
+                    title="Announcements",
                     slides=[
                         "Welcome to our service!",
                         "Please turn off your phones",
                         "Join us for coffee after the service"
                     ],
-                    credits="Church Staff"
+                    credits="Church Staff",
+                    position=0  # Add at beginning of service
                 )
             """
-            self.worker.add_custom_slides_requested.emit(title, slides, credits or "")
+            self.worker.add_custom_slides_requested.emit(title, slides, credits or "", position)
             return self.worker.wait_for_result()
 
         # Search tools
@@ -155,14 +213,20 @@ class MCPToolsManager:
 
         # Media management tools
         @self.mcp_server.tool()
-        def add_media_to_service(file_path: str, title: str = None) -> str:
+        def add_media_to_service(file_path: str, title: str = None, position: int = -1) -> str:
             """Add a media file to the current service. Supports local file paths and URLs (http/https/ftp). 
-            URLs will be downloaded automatically. Supports images, videos, audio, and presentations (PDF, PowerPoint)."""
+            URLs will be downloaded automatically. Supports images, videos, audio, and presentations (PDF, PowerPoint).
+            
+            Args:
+                file_path: Path to media file or URL
+                title: Optional custom title for the media item
+                position: Optional position to insert the media (0-based index). If not specified, appends to the end.
+            """
             # Check if this is a PowerPoint file that will need conversion
             file_extension = Path(file_path).suffix.lower()
             powerpoint_extensions = {'.pptx', '.ppt', '.pps', '.ppsx'}
             
-            self.worker.add_media_requested.emit(file_path, title or "")
+            self.worker.add_media_requested.emit(file_path, title or "", position)
             
             # Use longer timeout for PowerPoint files that need conversion
             if file_extension in powerpoint_extensions:
