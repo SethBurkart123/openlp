@@ -41,6 +41,10 @@ All downloads are cached in temporary directories and automatically cleaned up.
 
 import logging
 import tempfile
+import subprocess
+import shutil
+import sys
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -49,12 +53,6 @@ try:
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
-
-try:
-    import yt_dlp
-    HAS_YT_DLP = True
-except ImportError:
-    HAS_YT_DLP = False
 
 from openlp.core.common.httputils import download_file, get_url_file_size
 
@@ -277,52 +275,153 @@ def get_filename_from_url(url: str) -> str:
         return f"download_{hash(url) % 10000}.tmp"
 
 
+def find_ytdlp_executable() -> str:
+    """
+    Find the yt-dlp executable, handling PyInstaller bundled environments.
+    
+    :return: Path to yt-dlp executable or None if not found
+    """
+    # Possible executable names
+    executable_names = ['yt-dlp', 'yt-dlp.exe']
+    
+    # If we're in a PyInstaller bundle, the PATH might be limited
+    # So we need to check common installation locations
+    search_paths = []
+    
+    # First, try the normal PATH
+    for exe_name in executable_names:
+        exe_path = shutil.which(exe_name)
+        if exe_path:
+            return exe_path
+    
+    # If not found in PATH, try common installation locations
+    # This is especially important for PyInstaller bundles
+    if sys.platform.startswith('win'):
+        # Windows common locations
+        search_paths.extend([
+            os.path.expanduser('~/AppData/Local/Programs/Python/Scripts'),
+            os.path.expanduser('~/AppData/Roaming/Python/Scripts'),
+            'C:/Python*/Scripts',
+            'C:/Users/*/AppData/Local/Programs/Python/*/Scripts',
+        ])
+    elif sys.platform.startswith('darwin'):
+        # macOS common locations
+        search_paths.extend([
+            '/usr/local/bin',
+            '/opt/homebrew/bin',
+            os.path.expanduser('~/Library/Python/*/bin'),
+            os.path.expanduser('~/.local/bin'),
+            '/usr/bin',
+        ])
+    else:
+        # Linux/Unix common locations
+        search_paths.extend([
+            '/usr/local/bin',
+            '/usr/bin',
+            os.path.expanduser('~/.local/bin'),
+            '/opt/*/bin',
+        ])
+    
+    # Search in these paths
+    for search_path in search_paths:
+        if '*' in search_path:
+            # Handle glob patterns
+            import glob
+            for expanded_path in glob.glob(search_path):
+                for exe_name in executable_names:
+                    full_path = os.path.join(expanded_path, exe_name)
+                    if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                        return full_path
+        else:
+            for exe_name in executable_names:
+                full_path = os.path.join(search_path, exe_name)
+                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                    return full_path
+    
+    return None
+
+
+def check_ytdlp_available() -> bool:
+    """
+    Check if yt-dlp command line tool is available on the system.
+    
+    :return: True if yt-dlp is available, False otherwise
+    """
+    ytdlp_path = find_ytdlp_executable()
+    if not ytdlp_path:
+        log.debug("yt-dlp executable not found in PATH or common locations")
+        return False
+    
+    try:
+        result = subprocess.run([ytdlp_path, '--version'], 
+                              capture_output=True, 
+                              text=True, 
+                              timeout=5)
+        if result.returncode == 0:
+            log.debug(f"Found yt-dlp at: {ytdlp_path}, version: {result.stdout.strip()}")
+            return True
+        else:
+            log.debug(f"yt-dlp at {ytdlp_path} returned error: {result.stderr}")
+            return False
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+        log.debug(f"Error checking yt-dlp availability: {e}")
+        return False
+
+
 def download_video_platform_file(url: str, download_path: Path, quality: str = 'bestvideo[height<=1080][vcodec^=avc]+bestaudio/bestvideo[height<=1080]+bestaudio/best') -> bool:
     """
-    Download video from platforms like YouTube using yt-dlp.
+    Download video from platforms like YouTube using yt-dlp command line tool.
     
     :param url: The video platform URL
     :param download_path: The path where to save the file (without extension)
     :param quality: The quality format string for yt-dlp (includes video+audio combination)
     :return: True if successful, False otherwise
     """
-    if not HAS_YT_DLP:
-        log.error("yt-dlp not available for video platform downloads")
+    ytdlp_path = find_ytdlp_executable()
+    if not ytdlp_path:
+        log.error("yt-dlp command line tool not available")
         return False
     
     try:
-        # Configure yt-dlp options based on user settings
-        ydl_opts = {
-            'outtmpl': str(download_path.parent / f"{download_path.stem}.%(ext)s"),
-            'format': quality,  # Quality string now includes both video and audio preferences
-            'writeinfojson': False,
-            'writesubtitles': False,
-            'writeautomaticsub': False,
-            'quiet': True,
-            'no_warnings': True,
-        }
+        # Prepare the output template for yt-dlp
+        output_template = str(download_path.parent / f"{download_path.stem}.%(ext)s")
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract info first to get the final filename
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                log.error(f"Could not extract video info from {url}")
-                return False
-            
-            # Download the video
-            ydl.download([url])
-            
-            # Find the downloaded file (yt-dlp adds the extension)
-            final_extension = info.get('ext', 'mp4')
-            final_path = download_path.parent / f"{download_path.stem}.{final_extension}"
-            
+        # Build the yt-dlp command
+        cmd = [
+            ytdlp_path,
+            '--format', quality,
+            '--output', output_template,
+            '--no-write-info-json',
+            '--no-write-subs',
+            '--no-write-auto-subs',
+            '--quiet',
+            '--no-warnings',
+            url
+        ]
+        
+        log.debug(f"Executing yt-dlp command: {' '.join(cmd)}")
+        
+        # Execute yt-dlp command
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode != 0:
+            log.error(f"yt-dlp failed with return code {result.returncode}: {result.stderr}")
+            return False
+        
+        # Find the downloaded file (yt-dlp adds the extension)
+        # Check common video extensions
+        for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v', 'flv']:
+            final_path = download_path.parent / f"{download_path.stem}.{ext}"
             if final_path.exists():
                 log.info(f"Successfully downloaded video from {url} to {final_path}")
                 return True
-            else:
-                log.error(f"Downloaded file not found at expected location: {final_path}")
-                return False
+        
+        log.error(f"Downloaded file not found at expected location after yt-dlp execution")
+        return False
                 
+    except subprocess.TimeoutExpired:
+        log.error(f"yt-dlp download timed out for {url}")
+        return False
     except Exception as e:
         log.error(f"Failed to download video from {url}: {e}")
         return False
@@ -352,14 +451,22 @@ def resolve_file_path(file_path_or_url: str, temp_dir: Path = None, quality: str
             temp_dir = Path(tempfile.gettempdir()) / 'openlp_mcp_downloads'
         
         temp_dir.mkdir(parents=True, exist_ok=True)
+        log.debug(f"Using temp directory: {temp_dir}")
         
         # Check if this is a video platform URL that needs special handling
         if is_video_platform_url(file_path_or_url):
             log.info(f"Detected video platform URL, using yt-dlp: {file_path_or_url}")
             
+            # Check if yt-dlp is available first
+            if not check_ytdlp_available():
+                error_msg = "yt-dlp command line tool not found. Please install yt-dlp to download videos from platforms like YouTube."
+                log.error(error_msg)
+                raise Exception(error_msg)
+            
             # Generate base filename for video platforms
             base_filename = f"video_{hash(file_path_or_url) % 10000}"
             download_path_base = temp_dir / base_filename
+            log.debug(f"Download base path: {download_path_base}")
             
             try:
                 success = download_video_platform_file(file_path_or_url, download_path_base, quality)
@@ -367,22 +474,27 @@ def resolve_file_path(file_path_or_url: str, temp_dir: Path = None, quality: str
                     raise Exception(f"Failed to download video from {file_path_or_url}")
                 
                 # Find the actual downloaded file (yt-dlp adds extension)
-                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov']:
+                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v', 'flv']:
                     potential_path = temp_dir / f"{base_filename}.{ext}"
+                    log.debug(f"Checking for downloaded file: {potential_path}")
                     if potential_path.exists():
                         log.info(f"Successfully downloaded video to {potential_path}")
                         return potential_path
                 
+                # List what files are actually in the temp directory for debugging
+                existing_files = list(temp_dir.glob(f"{base_filename}*"))
+                log.error(f"Downloaded video file not found. Expected base: {base_filename}, found files: {existing_files}")
                 raise Exception(f"Downloaded video file not found in expected location")
                 
             except Exception as e:
                 log.error(f"Error downloading video from {file_path_or_url}: {e}")
                 # Clean up any partial downloads
-                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov', 'part']:
+                for ext in ['mp4', 'webm', 'mkv', 'avi', 'mov', 'm4v', 'flv', 'part']:
                     cleanup_path = temp_dir / f"{base_filename}.{ext}"
                     if cleanup_path.exists():
                         try:
                             cleanup_path.unlink()
+                            log.debug(f"Cleaned up partial download: {cleanup_path}")
                         except Exception:
                             pass
                 raise Exception(f"Failed to download video from {file_path_or_url}: {e}")
@@ -392,6 +504,7 @@ def resolve_file_path(file_path_or_url: str, temp_dir: Path = None, quality: str
             # Generate filename using improved detection
             filename = get_filename_from_url(file_path_or_url)
             download_path = temp_dir / filename
+            log.debug(f"Regular download path: {download_path}")
             
             # Download the file
             progress = DownloadProgress()
@@ -448,26 +561,3 @@ def clean_temp_downloads(temp_dir: Path = None):
     
     except Exception as e:
         log.debug(f"Error during temp cleanup: {e}")
-
-
-def test_url_detection():
-    """
-    Test function to demonstrate improved URL file type detection.
-    This can be called during development to verify detection works correctly.
-    """
-    test_urls = [
-        "https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=2948&auto=format&fit=crop",
-        "https://example.com/video.mp4",
-        "https://cdn.example.com/audio",
-        "https://api.example.com/presentation.pptx",
-        "https://files.example.com/service.osz",
-    ]
-    
-    print("Testing URL detection:")
-    for url in test_urls:
-        filename = get_filename_from_url(url)
-        content_type = get_content_type_from_url(url)
-        print(f"URL: {url}")
-        print(f"  Detected filename: {filename}")
-        print(f"  Content-Type: {content_type or 'Not detected'}")
-        print() 

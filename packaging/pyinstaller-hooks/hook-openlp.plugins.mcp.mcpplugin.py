@@ -70,8 +70,7 @@ hiddenimports = [
     'urllib.request',
     'urllib.parse',
     'http.server',
-    'socketserver',
-    'yt-dlp'
+    'socketserver'
 ]
 
 # Print debug info

@@ -230,6 +230,9 @@ class MCPWorker(QtCore.QObject):
             service_item.add_icon()
             service_item.add_from_text(content)
             
+            # Ensure raw_footer is properly initialized for service loading
+            service_item.raw_footer = [title]
+            
             service_manager = Registry().get('service_manager')
             service_manager.add_service_item(service_item)
             service_manager.repaint_service_list(-1, -1)
@@ -278,6 +281,13 @@ class MCPWorker(QtCore.QObject):
                 # Add each slide to the service item
                 for slide_content in slides:
                     service_item.add_from_text(slide_content)
+                
+                # Ensure raw_footer is properly initialized for service loading
+                # Use format that matches the custom plugin's generate_slide_data method
+                if credits:
+                    service_item.raw_footer = [f"{title} {credits}"]
+                else:
+                    service_item.raw_footer = [title]
                 
                 # Set the database ID for the service item
                 service_item.item_id = custom_slide.id
@@ -369,6 +379,9 @@ class MCPWorker(QtCore.QObject):
         from openlp.core.common import sha256_file_hash
         service_item.sha256_file_hash = sha256_file_hash(file_path)
         
+        # Ensure raw_footer is properly initialized for service loading
+        service_item.raw_footer = [service_item.title]
+        
         # Add image capabilities
         from openlp.core.lib.serviceitem import ItemCapabilities
         service_item.add_capability(ItemCapabilities.CanMaintain)
@@ -402,6 +415,9 @@ class MCPWorker(QtCore.QObject):
         
         # Use add_from_command for video/audio files
         service_item.add_from_command(str(file_path.parent), file_path.name, UiIcons().clapperboard)
+        
+        # Ensure raw_footer is properly initialized for service loading
+        service_item.raw_footer = [service_item.title]
         
         # Set processor and capabilities
         service_item.processor = 'qt6'
@@ -530,6 +546,9 @@ class MCPWorker(QtCore.QObject):
             service_item.name = 'presentations'
             service_item.processor = 'Pdf'
             service_item.add_icon()
+            
+            # Ensure raw_footer is properly initialized for service loading
+            service_item.raw_footer = [service_item.title]
             
             # Set capabilities
             from openlp.core.lib.serviceitem import ItemCapabilities
