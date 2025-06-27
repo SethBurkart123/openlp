@@ -158,7 +158,31 @@ def check_for_variant_migration(settings):
     # Check for need to upgrade variants from PyQt5 to PySide6
     settings_version = settings.value('core/application version')
     # convert to string of version in format "1.2.3" to an integer tuple for easy comparison
-    settings_version_tuple = tuple(map(int, settings_version.split('.')))
+    # Handle version strings that might have non-numeric prefixes like 'v3.1.0'
+    if settings_version.startswith('v'):
+        settings_version = settings_version[1:]  # Remove 'v' prefix
+    
+    # Split version and handle non-numeric parts
+    version_parts = []
+    for part in settings_version.split('.'):
+        # Extract numeric part from each component (e.g., '3a' -> '3')
+        numeric_part = ''
+        for char in part:
+            if char.isdigit():
+                numeric_part += char
+            else:
+                break
+        if numeric_part:
+            version_parts.append(int(numeric_part))
+        else:
+            # If no numeric part found, default to 0
+            version_parts.append(0)
+    
+    # Ensure we have at least 3 parts for comparison
+    while len(version_parts) < 3:
+        version_parts.append(0)
+    
+    settings_version_tuple = tuple(version_parts)
     # last version using PyQt5 was the 3.1.x series
     if settings_version_tuple < (3, 1, 99):
         # Do OS/format specific conversion:
