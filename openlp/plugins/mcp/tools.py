@@ -58,16 +58,8 @@ class MCPToolsManager:
         """Register all MCP tools."""
         if not self.mcp_server:
             return
-            
-        self._register_service_tools()
-        self._register_content_tools()
-        self._register_plugin_search_tools()
-        self._register_media_tools()
-        self._register_slide_tools()
-        self._register_theme_tools()
-    
-    def _register_service_tools(self):
-        """Register tools for service management."""
+        
+        # Service management tools
         @self.mcp_server.tool()
         def create_new_service() -> str:
             """Create a new empty service."""
@@ -92,8 +84,7 @@ class MCPToolsManager:
             self.worker.get_service_items_requested.emit()
             return self.worker.wait_for_result()
 
-    def _register_content_tools(self):
-        """Register tools for creating and adding content."""
+        # Content creation tools
         @self.mcp_server.tool()
         def create_song(title: str, lyrics: str, author: str = None) -> str:
             """Create a new song in the database. Returns the song ID and confirmation message.
@@ -155,16 +146,14 @@ class MCPToolsManager:
             self.worker.add_custom_slides_requested.emit(title, slides, credits or "")
             return self.worker.wait_for_result()
 
-    def _register_plugin_search_tools(self):
-        """Register tools for plugin search functionality."""
+        # Search tools
         @self.mcp_server.tool()
         def search_songs(text: str) -> List[List[Any]]:
             """Search for songs in the OpenLP database and return results with [id, title, alternate_title] format."""
             self.worker.search_songs_requested.emit(text)
             return self.worker.wait_for_result()
 
-    def _register_media_tools(self):
-        """Register tools for media management."""
+        # Media management tools
         @self.mcp_server.tool()
         def add_media_to_service(file_path: str, title: str = None) -> str:
             """Add a media file to the current service. Supports local file paths and URLs (http/https/ftp). 
@@ -181,8 +170,7 @@ class MCPToolsManager:
             else:
                 return self.worker.wait_for_result()  # 10 second timeout
 
-    def _register_slide_tools(self):
-        """Register tools for controlling the live display."""
+        # Slide control tools
         @self.mcp_server.tool()
         def go_live_with_item(item_index: int) -> str:
             """Make a specific service item live by index."""
@@ -201,8 +189,7 @@ class MCPToolsManager:
             self.worker.previous_slide_requested.emit()
             return self.worker.wait_for_result()
 
-    def _register_theme_tools(self):
-        """Register tools for theme management."""
+        # Theme management tools
         @self.mcp_server.tool()
         def list_themes() -> List[str]:
             """Get a list of all available themes."""
