@@ -61,7 +61,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets PyInstaller macholib lxml
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets PyInstaller macholib lxml fastmcp
     
     - name: Generate resources
       run: |
@@ -157,7 +157,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 PyInstaller macholib dmgbuild
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 PyInstaller macholib dmgbuild fastmcp
     
     - name: Generate resources
       run: |
@@ -244,7 +244,7 @@ jobs:
     - name: Install Python dependencies for resource generation
       run: |
         python -m pip install --upgrade pip
-        pip install PySide6
+        pip install PySide6 fastmcp
     
     - name: Generate resources
       run: |
