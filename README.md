@@ -138,6 +138,20 @@ Then add this video: https://www.youtube.com/watch?v=LRP8d7hhpoQ"
 Extract the song list and create appropriate slides"
 ```
 
+### Building
+
+#### macOS
+
+First install pyenchant with brew:
+```bash
+brew install pyenchant
+```
+
+Then build the app:
+```bash
+cd ./packaging/builders && export PYENCHANT_LIBRARY_PATH=/opt/homebrew/lib/libenchant-2.2.dylib && uv run macos-builder.py --config ../macos/config.ini --skip-update
+```
+
 ## Development
 
 ### Project Structure
