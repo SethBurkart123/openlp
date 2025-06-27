@@ -131,6 +131,29 @@ class MCPToolsManager:
             self.worker.add_custom_slide_requested.emit(title, content)
             return self.worker.wait_for_result()
 
+        @self.mcp_server.tool()
+        def add_custom_slides_to_service(title: str, slides: List[str], credits: str = None) -> str:
+            """Add a custom slides item with multiple text slides to the current service.
+            
+            Args:
+                title: The title for the custom slide item
+                slides: A list of text content for each slide
+                credits: Optional credits text
+                
+            Example:
+                add_custom_slides_to_service(
+                    title="Welcome Announcements",
+                    slides=[
+                        "Welcome to our service!",
+                        "Please turn off your phones",
+                        "Join us for coffee after the service"
+                    ],
+                    credits="Church Staff"
+                )
+            """
+            self.worker.add_custom_slides_requested.emit(title, slides, credits or "")
+            return self.worker.wait_for_result()
+
     def _register_plugin_search_tools(self):
         """Register tools for plugin search functionality."""
         @self.mcp_server.tool()

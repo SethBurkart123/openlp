@@ -54,6 +54,7 @@ class MCPWorker(QtCore.QObject):
     save_service_requested = QtCore.Signal(str)  # file_path (optional)
     get_service_items_requested = QtCore.Signal()
     add_custom_slide_requested = QtCore.Signal(str, str)  # title, content
+    add_custom_slides_requested = QtCore.Signal(str, list, str)  # title, slides, credits
     add_media_requested = QtCore.Signal(str, str)  # file_path, title
     go_live_requested = QtCore.Signal(int)  # item_index
     next_slide_requested = QtCore.Signal()
@@ -97,6 +98,7 @@ class MCPWorker(QtCore.QObject):
         self.save_service_requested.connect(self.save_service)
         self.get_service_items_requested.connect(self.get_service_items)
         self.add_custom_slide_requested.connect(self.add_custom_slide)
+        self.add_custom_slides_requested.connect(self.add_custom_slides)
         self.add_media_requested.connect(self.add_media)
         self.go_live_requested.connect(self.go_live)
         self.next_slide_requested.connect(self.next_slide)
@@ -219,6 +221,74 @@ class MCPWorker(QtCore.QObject):
             self.operation_completed.emit(f"Custom slide '{title}' added to service")
         except Exception as e:
             self.operation_completed.emit(f"Error adding custom slide: {str(e)}")
+    
+    @QtCore.Slot(str, list, str)
+    def add_custom_slides(self, title, slides, credits):
+        try:
+            custom_plugin = Registry().get('plugin_manager').get_plugin_by_name('custom')
+            if not custom_plugin or not custom_plugin.is_active():
+                self.operation_completed.emit("Custom plugin not available")
+                return
+            
+            # Import required classes
+            from openlp.plugins.custom.lib.customxmlhandler import CustomXML
+            from openlp.plugins.custom.lib.db import CustomSlide
+            
+            # Create the XML content with multiple slides
+            custom_xml = CustomXML()
+            custom_xml.add_title_and_credit(title, credits)
+            
+            # Add each slide as a verse
+            for i, slide_content in enumerate(slides, 1):
+                custom_xml.add_verse_to_lyrics('custom', i, slide_content)
+            
+            # Get the XML string
+            xml_content = custom_xml._dump_xml().decode('utf-8')
+            
+            # Create and save the custom slide to database
+            manager = custom_plugin.db_manager
+            custom_slide = CustomSlide()
+            custom_slide.title = title
+            custom_slide.text = xml_content
+            custom_slide.credits = credits
+            
+            if manager.save_object(custom_slide):
+                # Now create a service item using the saved custom slide
+                service_item = ServiceItem(custom_plugin)
+                service_item.title = title
+                service_item.name = 'custom'
+                service_item.service_item_type = ServiceItemType.Text
+                service_item.add_icon()
+                
+                # Add each slide to the service item
+                for slide_content in slides:
+                    service_item.add_from_text(slide_content)
+                
+                # Set the database ID for the service item
+                service_item.item_id = custom_slide.id
+                service_item.edit_id = custom_slide.id
+                service_item.credits = credits
+                
+                # Add capabilities
+                from openlp.core.lib.serviceitem import ItemCapabilities
+                service_item.add_capability(ItemCapabilities.CanEdit)
+                service_item.add_capability(ItemCapabilities.CanPreview)
+                service_item.add_capability(ItemCapabilities.CanLoop)
+                service_item.add_capability(ItemCapabilities.CanSoftBreak)
+                service_item.add_capability(ItemCapabilities.OnLoadUpdate)
+                service_item.add_capability(ItemCapabilities.CanWordSplit)
+                
+                service_manager = Registry().get('service_manager')
+                service_manager.add_service_item(service_item)
+                service_manager.repaint_service_list(-1, -1)
+                
+                self.operation_completed.emit(f"Custom slides '{title}' with {len(slides)} slides added to service and database")
+            else:
+                self.operation_completed.emit(f"Error saving custom slide '{title}' to database")
+                
+        except Exception as e:
+            self.operation_completed.emit(f"Error adding custom slides: {str(e)}")
+            log.error(f"Error in add_custom_slides: {e}", exc_info=True)
     
     @QtCore.Slot(str, str)
     def add_media(self, file_path, title):
