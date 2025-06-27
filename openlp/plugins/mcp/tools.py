@@ -73,9 +73,9 @@ class MCPToolsManager:
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
-        def save_service(file_path: str = None) -> str:
-            """Save the current service, optionally to a specific path (this must be an exact path)."""
-            self.worker.save_service_requested.emit(file_path or "")
+        def save_service(file_path: str) -> str:
+            """Save the current service, optionally to a specific path (this must be an exact path). Use empty string for default location."""
+            self.worker.save_service_requested.emit(file_path)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
@@ -131,7 +131,7 @@ class MCPToolsManager:
 
         # Content creation tools
         @self.mcp_server.tool()
-        def create_song(title: str, lyrics: str, author: str = None) -> str:
+        def create_song(title: str, lyrics: str, author: str) -> str:
             """Create a new song in the database. Returns the song ID and confirmation message.
             
             For lyrics formatting, use verse labels in square brackets. For example:
@@ -153,55 +153,58 @@ class MCPToolsManager:
             I have already come
             
             Supported labels: [Verse 1], [Verse 2], [Chorus], [Bridge], [Pre-Chorus], [Intro], [Outro], [Tag], [Other]"""
-            self.worker.create_song_requested.emit(title, lyrics, author or "")
+            self.worker.create_song_requested.emit(title, lyrics, author)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
-        def add_song_by_id(song_id: int, position: int = -1) -> str:
+        def add_song_by_id(song_id: int, position: int) -> str:
             """Add a song to the service by its database ID. 
             
             Args:
                 song_id: The database ID of the song to add
-                position: Optional position to insert the song (0-based index). If not specified, appends to the end.
+                position: Position to insert the song (0-based index). Use -1 to append to the end.
                 
             Examples:
-                add_song_by_id(123)          # Adds song to the end of service
-                add_song_by_id(123, position=0)       # Adds song at the beginning
-                add_song_by_id(123, position=2)       # Adds song at position 2 (3rd item)
+                add_song_by_id(123, -1)      # Adds song to the end of service
+                add_song_by_id(123, 0)       # Adds song at the beginning
+                add_song_by_id(123, 2)       # Adds song at position 2 (3rd item)
             """
+
             self.worker.add_song_by_id_requested.emit(song_id, position)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
-        def add_custom_slides_to_service(title: str, slides: List[str], credits: str = None, position: int = -1) -> str:
+        def add_custom_slides_to_service(title: str, slides: List[str], credits: str, position: int) -> str:
             """Add custom slides to the current service. Can add single or multiple slides.
             
             Args:
                 title: The title for the custom slide item
                 slides: A list of text content for each slide (use single-item list for one slide)
-                credits: Optional credits text
-                position: Optional position to insert the slides (0-based index). If not specified, appends to the end.
+                credits: Credits text (use empty string for no credits)
+                position: Position to insert the slides (0-based index). Use -1 to append to the end.
                 
             Examples:
                 # Single slide
                 add_custom_slides_to_service(
-                    title="Welcome",
-                    slides=["Welcome to our service!"]
+                    "Welcome",
+                    ["Welcome to our service!"],
+                    "",
+                    -1
                 )
                 
                 # Multiple slides at specific position
                 add_custom_slides_to_service(
-                    title="Announcements",
-                    slides=[
+                    "Announcements",
+                    [
                         "Welcome to our service!",
                         "Please turn off your phones",
                         "Join us for coffee after the service"
                     ],
-                    credits="Church Staff",
-                    position=0  # Add at beginning of service
+                    "Church Staff",
+                    0  # Add at beginning of service
                 )
             """
-            self.worker.add_custom_slides_requested.emit(title, slides, credits or "", position)
+            self.worker.add_custom_slides_requested.emit(title, slides, credits, position)
             return self.worker.wait_for_result()
 
         # Search tools
@@ -213,20 +216,20 @@ class MCPToolsManager:
 
         # Media management tools
         @self.mcp_server.tool()
-        def add_media_to_service(file_path: str, title: str = None, position: int = -1) -> str:
+        def add_media_to_service(file_path: str, title: str, position: int) -> str:
             """Add a media file to the current service. Supports local file paths and URLs (http/https/ftp). 
             URLs will be downloaded automatically. Supports images, videos, audio, and presentations (PDF, PowerPoint).
             
             Args:
                 file_path: Path to media file or URL
-                title: Optional custom title for the media item
-                position: Optional position to insert the media (0-based index). If not specified, appends to the end.
+                title: Custom title for the media item (use empty string for default)
+                position: Position to insert the media (0-based index). Use -1 to append to the end.
             """
             # Check if this is a PowerPoint file that will need conversion
             file_extension = Path(file_path).suffix.lower()
             powerpoint_extensions = {'.pptx', '.ppt', '.pps', '.ppsx'}
             
-            self.worker.add_media_requested.emit(file_path, title or "", position)
+            self.worker.add_media_requested.emit(file_path, title, position)
             
             # Use longer timeout for PowerPoint files that need conversion
             if file_extension in powerpoint_extensions:
@@ -281,12 +284,12 @@ class MCPToolsManager:
         @self.mcp_server.tool()
         def create_theme(
             theme_name: str,
-            background_type: str = "solid",  # solid, gradient, image, transparent, video
-            background_color: str = "#000000",
-            background_image_path: str = None,  # Local file path or URL - URLs will be downloaded automatically
-            font_main_name: str = "Arial",
-            font_main_size: int = 40,
-            font_main_color: str = "#FFFFFF"
+            background_type: str,
+            background_color: str,
+            background_image_path: str,
+            font_main_name: str,
+            font_main_size: int,
+            font_main_color: str
         ) -> str:
             """Create a new theme with essential properties. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
             theme_data = {
@@ -310,18 +313,19 @@ class MCPToolsManager:
         @self.mcp_server.tool()
         def update_theme(
             theme_name: str,
-            background_type: str = None,
-            background_color: str = None,
-            background_image_path: str = None,  # Local file path or URL - URLs will be downloaded automatically
-            font_main_name: str = None,
-            font_main_size: int = None,
-            font_main_color: str = None
+            background_type: str,
+            background_color: str,
+            background_image_path: str,
+            font_main_name: str,
+            font_main_size: int,
+            font_main_color: str
         ) -> str:
-            """Update properties of an existing theme. Only specified properties will be changed. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
+            """Update properties of an existing theme. Only specified properties will be changed. Use empty strings or -1 for unchanged values. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
             updates = {}
             for key, value in locals().items():
-                if key != 'self' and key != 'theme_name' and key != 'updates' and value is not None:
-                    updates[key] = value
+                if key != 'self' and key != 'theme_name' and key != 'updates':
+                    if (isinstance(value, str) and value != "") or (isinstance(value, int) and value != -1):
+                        updates[key] = value
             
             update_data = {'theme_name': theme_name, 'updates': updates}
             self.worker.update_theme_requested.emit(update_data)

@@ -54,8 +54,8 @@ class MCPWorker(QtCore.QObject):
     save_service_requested = QtCore.Signal(str)  # file_path (optional)
     get_service_items_requested = QtCore.Signal()
     add_custom_slide_requested = QtCore.Signal(str, str)  # title, content
-    add_custom_slides_requested = QtCore.Signal(str, list, str)  # title, slides, credits
-    add_media_requested = QtCore.Signal(str, str)  # file_path, title
+    add_custom_slides_requested = QtCore.Signal(str, list, str, int)  # title, slides, credits, position
+    add_media_requested = QtCore.Signal(str, str, int)  # file_path, title, position
     go_live_requested = QtCore.Signal(int)  # item_index
     next_slide_requested = QtCore.Signal()
     previous_slide_requested = QtCore.Signal()
@@ -66,7 +66,7 @@ class MCPWorker(QtCore.QObject):
     # Plugin search and add signals
     search_songs_requested = QtCore.Signal(str)  # text
     create_song_requested = QtCore.Signal(str, str, str)  # title, lyrics, author
-    add_song_by_id_requested = QtCore.Signal(int)  # song_id
+    add_song_by_id_requested = QtCore.Signal(int, int)  # song_id, position
     
     # Theme management signals
     create_theme_requested = QtCore.Signal(object)  # theme_data
@@ -222,8 +222,8 @@ class MCPWorker(QtCore.QObject):
         except Exception as e:
             self.operation_completed.emit(f"Error adding custom slide: {str(e)}")
     
-    @QtCore.Slot(str, list, str)
-    def add_custom_slides(self, title, slides, credits):
+    @QtCore.Slot(str, list, str, int)
+    def add_custom_slides(self, title, slides, credits, position):
         try:
             custom_plugin = Registry().get('plugin_manager').get_plugin_by_name('custom')
             if not custom_plugin or not custom_plugin.is_active():
@@ -279,7 +279,10 @@ class MCPWorker(QtCore.QObject):
                 service_item.add_capability(ItemCapabilities.CanWordSplit)
                 
                 service_manager = Registry().get('service_manager')
-                service_manager.add_service_item(service_item)
+                if position == -1:
+                    service_manager.add_service_item(service_item)
+                else:
+                    service_manager.add_service_item(service_item, replace=False, position=position)
                 service_manager.repaint_service_list(-1, -1)
                 
                 self.operation_completed.emit(f"Custom slides '{title}' with {len(slides)} slides added to service and database")
@@ -290,8 +293,8 @@ class MCPWorker(QtCore.QObject):
             self.operation_completed.emit(f"Error adding custom slides: {str(e)}")
             log.error(f"Error in add_custom_slides: {e}", exc_info=True)
     
-    @QtCore.Slot(str, str)
-    def add_media(self, file_path, title):
+    @QtCore.Slot(str, str, int)
+    def add_media(self, file_path, title, position):
         try:
             # Get MCP plugin settings for video downloads
             settings = Registry().get('settings')
@@ -319,11 +322,11 @@ class MCPWorker(QtCore.QObject):
                 title = f"{resolved_path.name} (downloaded)"
             
             if extension in image_extensions:
-                self._add_image(resolved_path, title)
+                self._add_image(resolved_path, title, position)
             elif extension in video_extensions or extension in audio_extensions:
-                self._add_video_audio(resolved_path, title, extension in video_extensions)
+                self._add_video_audio(resolved_path, title, extension in video_extensions, position)
             elif extension in presentation_extensions:
-                self._add_presentation(resolved_path, title)
+                self._add_presentation(resolved_path, title, position)
             else:
                 supported = f"images ({', '.join(sorted(image_extensions))}), videos ({', '.join(sorted(video_extensions))}), audio ({', '.join(sorted(audio_extensions))}), presentations ({', '.join(sorted(presentation_extensions))})"
                 self.operation_completed.emit(f"Unsupported format: {extension}. Supported: {supported}")
@@ -332,7 +335,7 @@ class MCPWorker(QtCore.QObject):
             self.operation_completed.emit(f"Error adding media: {str(e)}")
             log.error(f"Error adding media from {file_path}: {e}", exc_info=True)
     
-    def _add_image(self, file_path, title):
+    def _add_image(self, file_path, title, position):
         """Add an image using the images plugin."""
         images_plugin = Registry().get('plugin_manager').get_plugin_by_name('images')
         if not images_plugin or not images_plugin.is_active():
@@ -362,11 +365,14 @@ class MCPWorker(QtCore.QObject):
         service_item.add_capability(ItemCapabilities.ProvidesOwnTheme)
         
         service_manager = Registry().get('service_manager')
-        service_manager.add_service_item(service_item)
+        if position == -1:
+            service_manager.add_service_item(service_item)
+        else:
+            service_manager.add_service_item(service_item, replace=False, position=position)
         service_manager.repaint_service_list(-1, -1)
         self.operation_completed.emit(f"Image '{service_item.title}' added to service")
     
-    def _add_video_audio(self, file_path, title, is_video):
+    def _add_video_audio(self, file_path, title, is_video, position):
         """Add a video or audio file using the media plugin."""
         media_plugin = Registry().get('plugin_manager').get_plugin_by_name('media')
         if not media_plugin or not media_plugin.is_active():
@@ -390,13 +396,16 @@ class MCPWorker(QtCore.QObject):
         service_item.add_capability(ItemCapabilities.RequiresMedia)
         
         service_manager = Registry().get('service_manager')
-        service_manager.add_service_item(service_item)
+        if position == -1:
+            service_manager.add_service_item(service_item)
+        else:
+            service_manager.add_service_item(service_item, replace=False, position=position)
         service_manager.repaint_service_list(-1, -1)
         
         media_type = "video" if is_video else "audio"
         self.operation_completed.emit(f"{media_type.capitalize()} '{service_item.title}' added to service")
     
-    def _add_presentation(self, file_path, title):
+    def _add_presentation(self, file_path, title, position):
         """Add a presentation file, converting PowerPoint to PDF if needed."""
         try:
             extension = file_path.suffix.lower()
@@ -1201,9 +1210,9 @@ class MCPWorker(QtCore.QObject):
             log.error(error_msg, exc_info=True)
             self.operation_completed.emit(f"Error: {error_msg}")
 
-    @QtCore.Slot(int)
-    def add_song_by_id(self, song_id):
-        """Add a song to the service by its database ID."""
+    @QtCore.Slot(int, int)
+    def add_song_by_id(self, song_id, position):
+        """Add a song to the service by its database ID at the specified position."""
         try:
             songs_plugin = Registry().get('plugin_manager').get_plugin_by_name('songs')
             if not songs_plugin or not songs_plugin.is_active():
@@ -1233,9 +1242,12 @@ class MCPWorker(QtCore.QObject):
             if songs_plugin.media_item.generate_slide_data(service_item, item=mock_item, context=ServiceItemContext.Service):
                 service_item.from_plugin = False
                 
-                # Add the service item to the service
+                # Add the service item to the service at the specified position
                 service_manager = Registry().get('service_manager')
-                service_manager.add_service_item(service_item)
+                if position == -1:
+                    service_manager.add_service_item(service_item)
+                else:
+                    service_manager.add_service_item(service_item, replace=False, position=position)
                 
                 success_msg = f"Song '{song.title}' (ID: {song_id}) added to service"
                 log.info(success_msg)
