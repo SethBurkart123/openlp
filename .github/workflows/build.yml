@@ -113,14 +113,7 @@ jobs:
         python windows-builder.py --config ../windows/config.ini --skip-update
       env:
         PYTHONPATH: packaging/builders
-    
-    - name: Build Windows installer (portable)
-      run: |
-        cd packaging/builders
-        python windows-builder.py --config ../windows/config.ini --skip-update --portable
-      env:
-        PYTHONPATH: packaging/builders
-    
+
     - name: List dist folder contents
       run: |
         Write-Host "Contents of dist folder:"
