@@ -180,10 +180,25 @@ class MCPWorker(QtCore.QObject):
     def save_service(self, file_path):
         try:
             service_manager = Registry().get('service_manager')
-            if file_path:
-                service_manager.set_file_name(Path(file_path))
-            service_manager.decide_save_method()
-            self.operation_completed.emit(f"Service saved{' to ' + file_path if file_path else ''}")
+            
+            # If no file path provided, create a default one
+            if not file_path or not file_path.strip():
+                from pathlib import Path
+                import datetime
+                
+                # Get the user's Documents directory
+                documents_dir = Path.home() / "Documents" / "OpenLP Services"
+                documents_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Create a default filename with timestamp
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                file_path = str(documents_dir / f"Service_{timestamp}.osj")
+            
+            # Set the file path and save
+            service_manager.set_file_name(Path(file_path))
+            service_manager.save_file()  # Use save_file() instead of decide_save_method() to avoid dialog
+            
+            self.operation_completed.emit(f"Service saved to {file_path}")
         except Exception as e:
             self.operation_completed.emit(f"Error saving service: {str(e)}")
     
