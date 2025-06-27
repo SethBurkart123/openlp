@@ -25,20 +25,20 @@ changes from within OpenLP. It uses JSON to communicate with the remotes.
 import asyncio
 import json
 import logging
+import time
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Optional, Union
 
 from PySide6 import QtCore
 
 try:
     # New way to do websockets stuff
-    from websockets.asyncio.server import serve
+    from websockets.asyncio.server import ServerConnection, serve
 except ImportError:
     try:
-        from websockets.server import serve
+        from websockets.server import ServerConnection, serve
     except ImportError:
-        from websockets import serve
+        from websockets import ServerConnection, serve
 
 from openlp.core.common.mixins import LogMixin, RegistryProperties
 from openlp.core.common.registry import Registry, RegistryBase
@@ -57,9 +57,9 @@ ws_logger.setLevel(logging.ERROR)
 
 @dataclass
 class WebSocketMessage:
-    plugin: Optional[str]
+    plugin: str | None
     key: str
-    value: Union[int, str, dict, list]
+    value: int | str | dict | list
 
 
 class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
@@ -70,52 +70,80 @@ class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
     The main idea is that state-based websocket connections will be removed in future, in favour of message-based
     connections (this will also help save some bandwidth on busy networks)
     """
-    async def run_server(self, address: str, port: int):
-        """Run the server"""
-        self.server = await serve(self.handle_websocket, address, port)
-        await self.server.start_serving()
 
     def start(self):
         """
         Run the worker.
         """
+        self.state_queues = set()
+        self.message_queues = set()
+        self.stop_lock = asyncio.Lock()
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_until_complete(self.serve())
+        finally:
+            self.loop.run_until_complete(self._cancel_tasks())
+            self.loop.close()
+        self.quit.emit()
+
+    async def serve(self):
+        """
+        Coroutine for starting websocket server
+        """
         settings = Registry().get('settings_thread')
         address = settings.value('api/ip address')
         port = settings.value('api/websocket port')
-        self.server = None
-        self.state_queues = set()
-        self.message_queues = set()
-        # Set up the event loop for thread-safe access
-        self.event_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.event_loop)
-        try:
-            self.event_loop.run_until_complete(self.run_server(address, port))
-        finally:
-            self.event_loop.close()
-        self.quit.emit()
+        self.loop = asyncio.get_running_loop()
+        self._stop_future = self.loop.create_future()
+        for retry in range(3):
+            try:
+                server = await serve(self.handle_websocket, address, port)
+                log.debug(f'WebSocket server listening on {address}:{port}')
+                await self._stop_future
+                server.close(close_connections=False)
+                await server.wait_closed()
+                log.debug('WebSocket server stopped')
+                break
+            except Exception:
+                log.exception(f'Failed to start WebSocket server on {address}:{port}')
+                time.sleep(0.2)
+        else:
+            log.error(f'Giving up starting WebSocket server on {address}:{port}')
+
+    async def _cancel_tasks(self):
+        """Cancel all running tasks"""
+        for task in asyncio.all_tasks(self.loop):
+            if task.done():
+                continue
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        log.debug('All WebSocket asyncio tasks cancelled')
 
     def stop(self):
         """
         Stop the websocket server
         """
         try:
-            if self.server:
-                self.server.close()
+            if self.loop.is_running():
+                self.loop.call_soon_threadsafe(self._stop_future.set_result, None)
         except BaseException:
             log.exception('Unable to stop websockets server')
 
-    async def handle_websocket(self, websocket, path: str):
+    async def handle_websocket(self, websocket: ServerConnection):
         """
         Handle web socket requests and return the state information
         Waits for information to come over queue
 
         :param websocket: request from client
-        :param path: determines the endpoints supported
         """
-        client_id = uuid.uuid4() if log.getEffectiveLevel() == logging.DEBUG else 0
+        client_id = str(uuid.uuid4() if log.getEffectiveLevel() == logging.DEBUG else 0)
         log.debug(f'(client_id={client_id}) WebSocket handle_websocket connection')
         queue = asyncio.Queue()
-        is_state_queue = not path.startswith('/messages')
+        is_state_queue = not websocket.request.path.startswith('/messages')
         await self.register(websocket, client_id, queue, is_state_queue)
         try:
             if is_state_queue:
@@ -125,7 +153,7 @@ class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
             while True:
                 done, pending = await asyncio.wait(
                     [asyncio.create_task(queue.get()), asyncio.create_task(websocket.wait_closed())],
-                    return_when=asyncio.FIRST_COMPLETED
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
                 for task in pending:
                     task.cancel()
@@ -139,7 +167,8 @@ class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
         finally:
             await self.unregister(websocket, client_id, queue, is_state_queue)
 
-    async def register(self, websocket, client_id: str, queue: asyncio.Queue, is_state_queue=True):
+    async def register(self, websocket: ServerConnection, client_id: str, queue: asyncio.Queue,
+                       is_state_queue: bool = True):
         """
         Register Clients
         :param websocket: The client details
@@ -154,21 +183,22 @@ class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
             self.message_queues.add(queue)
         log.debug('WebSocket clients count: {client_count}'.format(client_count=len(USERS)))
 
-    async def unregister(self, websocket, client_id, queue, is_state_queue=True):
+    async def unregister(self, websocket: ServerConnection, client_id: str, queue: asyncio.Queue,
+                         is_state_queue: bool = True):
         """
         Unregister Clients
         :param websocket: The client details
         :return:
         """
+        log.debug(f'(client_id={client_id}) WebSocket handler unregister')
         USERS.remove(websocket)
         if is_state_queue:
             self.state_queues.remove(queue)
         else:
             self.message_queues.remove(queue)
-        log.debug(f'(client_id={client_id}) WebSocket handler unregister')
         log.debug('WebSocket clients count: {client_count}'.format(client_count=len(USERS)))
 
-    async def send_reply(self, websocket, client_id, reply):
+    async def send_reply(self, websocket: ServerConnection, client_id: str, reply: dict):
         json_reply = json.dumps(reply).encode()
         await websocket.send(json_reply)
         log.debug(f'(client_id={client_id}) WebSocket send reply: {json_reply}')
@@ -178,30 +208,31 @@ class WebSocketWorker(ThreadWorker, RegistryProperties, LogMixin):
         Inserts the state in each connection message queue
         :param state: OpenLP State
         """
-        if not self.event_loop.is_running():
+        if not self.loop.is_running():
             # Sometimes the event loop doesn't run when we call this method -- probably because it is shutting down
             # See https://gitlab.com/openlp/openlp/-/issues/1618
             return
         for queue in self.state_queues.copy():
-            self.event_loop.call_soon_threadsafe(queue.put_nowait, state)
+            self.loop.call_soon_threadsafe(queue.put_nowait, state)
 
     def add_message_to_queues(self, message: WebSocketMessage):
         """
         Inserts the message in each connection message queue
         :param state: OpenLP State
         """
-        if not self.event_loop.is_running():
+        if not self.loop.is_running():
             # Sometimes the event loop doesn't run when we call this method -- probably because it is shutting down
             # See https://gitlab.com/openlp/openlp/-/issues/1618
             return
         for queue in self.message_queues.copy():
-            self.event_loop.call_soon_threadsafe(queue.put_nowait, asdict(message))
+            self.loop.call_soon_threadsafe(queue.put_nowait, asdict(message))
 
 
 class WebSocketServer(RegistryBase, RegistryProperties, QtCore.QObject, LogMixin):
     """
     Wrapper round a server instance
     """
+
     _send_message_signal = QtCore.Signal(WebSocketMessage)
 
     def __init__(self):
@@ -264,7 +295,7 @@ def websocket_send_message(message: WebSocketMessage):
     Sends a message over websocket to all connected clients.
     """
     try:
-        if ws := Registry().get("web_socket_server"):
+        if ws := Registry().get('web_socket_server'):
             ws.send_message(message)
             return True
     except KeyError:

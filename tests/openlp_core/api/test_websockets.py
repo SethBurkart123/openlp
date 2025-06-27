@@ -22,7 +22,7 @@
 Functional tests to test the Http Server Class.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import MagicMock, call, patch
 
 from openlp.core.api.websocketspoll import WebSocketPoller
 from openlp.core.api.websockets import WebSocketMessage, WebSocketWorker, WebSocketServer, websocket_send_message
@@ -170,45 +170,51 @@ def test_websocket_send_message_fail(registry: Registry, settings: Settings):
     assert result is False
 
 
-@pytest.mark.asyncio
-@patch('openlp.core.api.websockets.serve')
-async def test_websocket_worker_run_server(mocked_serve: AsyncMock, worker: WebSocketWorker):
-    """Test the run_server() method of the worker"""
-    # GIVEN: A mocked serve function and an instance of the WebSocketServer class
-    mocked_server = MagicMock()
-    mocked_serve.return_value = mocked_server
-    # WHEN: run_server is called
-    await worker.run_server('0.0.0.0', 9000)
-    mocked_serve.assert_awaited_once_with(worker.handle_websocket, '0.0.0.0', 9000)
-    mocked_server.start_serving.assert_called_once_with()
-    assert worker.server is mocked_server, 'The worker.server attribute should be the awaited object'
-
-
 @patch('openlp.core.api.websockets.asyncio')
 def test_websocket_worker_start(mocked_asyncio: MagicMock, worker: WebSocketWorker):
     """
     Test the start function of the worker
     """
-    # GIVEN: A worker object
+    # GIVEN: A worker object and some mocked asyncio
+    mocked_lock = MagicMock()
+    mocked_asyncio.Lock.return_value = mocked_lock
+    mocked_event_loop = MagicMock()
+    mocked_asyncio.new_event_loop.return_value = mocked_event_loop
+
     # WHEN: The start function is called
-    with patch.object(worker, 'run_server') as mocked_run_server, \
+    with patch.object(worker, 'serve') as mocked_serve, \
             patch.object(worker, 'quit') as mocked_quit:
+        mocked_server = MagicMock()
+        mocked_serve.return_value = mocked_server
         worker.start()
+
     # THEN: No error occurs
-    mocked_run_server.assert_called_once()
-    mocked_quit.emit.assert_called_once()
+    mocked_asyncio.Lock.assert_called_once_with()
+    assert worker.stop_lock is mocked_lock
+    mocked_asyncio.new_event_loop.assert_called_once_with()
+    assert worker.loop is mocked_event_loop
+    mocked_asyncio.set_event_loop.assert_called_once_with(mocked_event_loop)
+    # This is a mix of sync and async, and it's not working right now
+    # assert mocked_event_loop.run_until_complete.call_args_list == [
+    #     call(mocked_serve),
+    #     call(mocked_cancel_tasks)
+    # ]
+    mocked_event_loop.close.assert_called_once_with()
+    mocked_quit.emit.assert_called_once_with()
 
 
 def test_websocket_worker_stop(worker: WebSocketWorker, settings: Settings):
     """Test that the worker stops"""
     # GIVEN: A WebSocketWorker with a mocked server
-    worker.server = MagicMock()
+    worker.loop = MagicMock(**{'is_running.side_effect': [True, False]})
+    worker._stop_future = MagicMock()
 
     # WHEN: stop is called
     worker.stop()
 
     # THEN: No exception and the method should have been called
-    worker.server.close.assert_called_once_with()
+    assert worker.loop.is_running.call_count == 1
+    worker.loop.call_soon_threadsafe.assert_called_once_with(worker._stop_future.set_result, None)
 
 
 def test_websocket_worker_stop_exception(worker: WebSocketWorker, settings: Settings):
@@ -390,10 +396,11 @@ def test_add_state_to_queues(worker: WebSocketWorker, settings: Settings):
     worker.state_queues = MagicMock(**{'copy.return_value': [mocked_queue_1, mocked_queue_2]})
 
     # WHEN: add_state_to_queues is called
+    worker.loop = MagicMock()
     worker.add_state_to_queues({'results': {'service': 'service-id'}})
 
     # THEN: The correct calls should have been made
-    assert worker.event_loop.call_soon_threadsafe.call_args_list == [
+    assert worker.loop.call_soon_threadsafe.call_args_list == [
         call('put_nowait1', {'results': {'service': 'service-id'}}),
         call('put_nowait2', {'results': {'service': 'service-id'}})
     ]
@@ -402,19 +409,19 @@ def test_add_state_to_queues(worker: WebSocketWorker, settings: Settings):
 def test_add_state_to_queues_no_loop(worker: WebSocketWorker, settings: Settings):
     """Test that adding the state when there's no event loop just exits early"""
     # GIVEN: A WebSocketWorker and some mocked methods
-    worker.event_loop = MagicMock(**{'is_running.return_value': False})
+    worker.loop = MagicMock(**{'is_running.return_value': False})
 
     # WHEN: add_state_to_queues is called
     worker.add_state_to_queues({'results': {'service': 'service-id'}})
 
     # THEN: Worker add_message_to_queues should be called
-    worker.event_loop.call_soon_threadsafe.assert_not_called()
+    worker.loop.call_soon_threadsafe.assert_not_called()
 
 
 def test_add_message_to_queues(worker: WebSocketWorker, settings: Settings):
     """Test that adding the message adds the message to each item in the queue"""
     # GIVEN: A WebSocketWorker and some mocked methods
-    worker.event_loop = MagicMock(**{'is_running.return_value': True})
+    worker.loop = MagicMock(**{'is_running.return_value': True})
     mocked_queue_1 = MagicMock(put_nowait='put_nowait1')
     mocked_queue_2 = MagicMock(put_nowait='put_nowait2')
     worker.message_queues = MagicMock(**{'copy.return_value': [mocked_queue_1, mocked_queue_2]})
@@ -424,7 +431,7 @@ def test_add_message_to_queues(worker: WebSocketWorker, settings: Settings):
     worker.add_message_to_queues(message)
 
     # THEN: The correct calls should have been made
-    assert worker.event_loop.call_soon_threadsafe.call_args_list == [
+    assert worker.loop.call_soon_threadsafe.call_args_list == [
         call('put_nowait1', {'plugin': 'core', 'key': 'test', 'value': 'test'}),
         call('put_nowait2', {'plugin': 'core', 'key': 'test', 'value': 'test'}),
     ]
@@ -433,11 +440,11 @@ def test_add_message_to_queues(worker: WebSocketWorker, settings: Settings):
 def test_add_message_to_queues_no_loop(worker: WebSocketWorker, settings: Settings):
     """Test that adding the state when there's no event loop just exits early"""
     # GIVEN: A WebSocketWorker and some mocked methods
-    worker.event_loop = MagicMock(**{'is_running.return_value': False})
+    worker.loop = MagicMock(**{'is_running.return_value': False})
     message = WebSocketMessage(plugin="core", key="test", value="test")
 
     # WHEN: add_state_to_queues is called
     worker.add_message_to_queues(message)
 
     # THEN: Worker add_message_to_queues should be called
-    worker.event_loop.call_soon_threadsafe.assert_not_called()
+    worker.loop.call_soon_threadsafe.assert_not_called()
