@@ -23,8 +23,10 @@ The :mod:`~openlp.plugins.mcp.tools` module contains the MCP tool definitions
 and server setup for the MCP plugin.
 """
 
+import asyncio
 import logging
-import os
+import threading
+import concurrent.futures
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -63,7 +65,6 @@ class MCPToolsManager:
         self._register_media_tools()
         self._register_slide_tools()
         self._register_theme_tools()
-        self._register_email_tools()
     
     def _register_service_tools(self):
         """Register tools for service management."""
@@ -286,19 +287,10 @@ class MCPToolsManager:
             """Create a copy of an existing theme with a new name."""
             self.worker.duplicate_theme_requested.emit(existing_theme_name, new_theme_name)
             return self.worker.wait_for_result()
-
-    def _register_email_tools(self):
-        """Register tools for processing emails to create services."""
-        @self.mcp_server.tool()
-        def create_service_from_structure(service_structure: List[Dict[str, Any]]) -> str:
-            """Create a service from a structured list of items."""
-            self.worker.create_from_structure_requested.emit(service_structure)
-            return self.worker.wait_for_result()
     
     async def run_server_async(self):
         """Run the MCP server asynchronously."""
         if self.mcp_server:
-            import asyncio
             self._shutdown_event = asyncio.Event()
             
             # Create the server task
@@ -332,19 +324,16 @@ class MCPToolsManager:
         """Signal the server to shutdown."""
         if self._shutdown_event and not self._shutdown_event.is_set():
             # Use call_soon_threadsafe to safely signal from another thread
-            import asyncio
             try:
                 loop = asyncio.get_event_loop()
                 loop.call_soon_threadsafe(self._shutdown_event.set)
             except RuntimeError:
                 # Event loop might be in another thread, try to signal directly
                 if self._shutdown_event:
-                    import threading
                     if isinstance(threading.current_thread(), threading._MainThread):
                         self._shutdown_event.set()
                     else:
                         # Schedule shutdown in the main thread
-                        import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as executor:
                             future = executor.submit(self._shutdown_event.set)
                             try:
