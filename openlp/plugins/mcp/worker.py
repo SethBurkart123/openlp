@@ -75,6 +75,11 @@ class MCPWorker(QtCore.QObject):
     delete_theme_requested = QtCore.Signal(str)  # theme_name
     duplicate_theme_requested = QtCore.Signal(str, str)  # existing_theme_name, new_theme_name
     
+    # Service item positioning and slide management signals
+    move_service_item_requested = QtCore.Signal(int, int)  # from_index, to_index
+    remove_service_item_requested = QtCore.Signal(int)  # index
+    get_service_item_slides_requested = QtCore.Signal(int)  # item_index
+    
     # Per-item theme management signals
     set_item_theme_requested = QtCore.Signal(int, str)  # item_index, theme_name
     get_item_theme_requested = QtCore.Signal(int)  # item_index
@@ -118,6 +123,11 @@ class MCPWorker(QtCore.QObject):
         self.update_theme_requested.connect(self.update_theme)
         self.delete_theme_requested.connect(self.delete_theme)
         self.duplicate_theme_requested.connect(self.duplicate_theme)
+        
+        # Connect service item positioning and slide management signals
+        self.move_service_item_requested.connect(self.move_service_item)
+        self.remove_service_item_requested.connect(self.remove_service_item)
+        self.get_service_item_slides_requested.connect(self.get_service_item_slides)
         
         # Connect per-item theme management signals
         self.set_item_theme_requested.connect(self.set_item_theme)
@@ -1294,4 +1304,129 @@ class MCPWorker(QtCore.QObject):
         except Exception as e:
             error_msg = f"Error adding song ID {song_id} to service: {str(e)}"
             log.error(error_msg, exc_info=True)
-            self.operation_completed.emit(f"Error: {error_msg}") 
+            self.operation_completed.emit(f"Error: {error_msg}")
+    
+    # Service item positioning and slide management methods
+    @QtCore.Slot(int, int)
+    def move_service_item(self, from_index, to_index):
+        """Move a service item from one position to another."""
+        try:
+            service_manager = Registry().get('service_manager')
+            
+            # Check if indices are valid
+            if from_index < 0 or from_index >= len(service_manager.service_items):
+                self.operation_completed.emit(f"Invalid from_index: {from_index}")
+                return
+            
+            if to_index < -1 or (to_index >= len(service_manager.service_items) and to_index != -1):
+                self.operation_completed.emit(f"Invalid to_index: {to_index}")
+                return
+            
+            # Handle -1 as "move to end"
+            if to_index == -1:
+                to_index = len(service_manager.service_items) - 1
+            
+            # Don't move if it's the same position
+            if from_index == to_index:
+                self.operation_completed.emit(f"Item is already at position {to_index}")
+                return
+            
+            # Get the item title for response message
+            item_title = service_manager.service_items[from_index]['service_item'].title
+            
+            # Move the item (following the pattern from ServiceManager.on_service_up/down methods)
+            temp = service_manager.service_items[from_index]
+            service_manager.service_items.remove(temp)
+            service_manager.service_items.insert(to_index, temp)
+            
+            # Update the order numbers for all items
+            for i, item in enumerate(service_manager.service_items):
+                item['order'] = i + 1
+            
+            # Repaint and mark as modified
+            service_manager.repaint_service_list(to_index, -1)
+            service_manager.set_modified()
+            
+            self.operation_completed.emit(f"Moved item '{item_title}' from position {from_index} to {to_index}")
+        except Exception as e:
+            self.operation_completed.emit(f"Error moving service item: {str(e)}")
+    
+    @QtCore.Slot(int)
+    def remove_service_item(self, index):
+        """Remove a service item at the specified position."""
+        try:
+            service_manager = Registry().get('service_manager')
+            
+            # Check if index is valid
+            if index < 0 or index >= len(service_manager.service_items):
+                self.operation_completed.emit(f"Invalid index: {index}")
+                return
+            
+            # Get the title for the response message
+            item_title = service_manager.service_items[index]['service_item'].title
+            
+            # Remove the item (following the pattern from ServiceManager.delete_item method)
+            service_manager.service_items.pop(index)
+            
+            # Update the order numbers for remaining items
+            for i, item in enumerate(service_manager.service_items):
+                item['order'] = i + 1
+            
+            # Repaint and mark as modified
+            service_manager.repaint_service_list(-1, -1)
+            service_manager.set_modified()
+            
+            self.operation_completed.emit(f"Removed item '{item_title}' from position {index}")
+        except Exception as e:
+            self.operation_completed.emit(f"Error removing service item: {str(e)}")
+    
+    @QtCore.Slot(int)
+    def get_service_item_slides(self, item_index):
+        """Get all slides within a specific service item."""
+        try:
+            service_manager = Registry().get('service_manager')
+            
+            # Check if item index is valid
+            if item_index < 0 or item_index >= len(service_manager.service_items):
+                self.operation_completed.emit(f"Invalid item index: {item_index}")
+                return
+            
+            # Get the service item
+            service_item = service_manager.service_items[item_index]['service_item']
+            
+            # Get slides based on service item type
+            slides = []
+            
+            if service_item.is_text():
+                # For text-based items (songs, custom slides), use display_slides
+                for i, slide in enumerate(service_item.display_slides):
+                    slide_info = {
+                        'index': i,
+                        'title': slide.get('title', f'Slide {i + 1}'),
+                        'text': slide.get('text', ''),
+                        'verse': slide.get('verse', str(i + 1))
+                    }
+                    slides.append(slide_info)
+            else:
+                # For other items (images, presentations, media), use the slides directly
+                for i, slide in enumerate(service_item.slides):
+                    slide_info = {
+                        'index': i,
+                        'title': slide.get('title', f'Slide {i + 1}'),
+                        'text': slide.get('title', ''),  # For non-text items, use title as text
+                        'path': slide.get('path', ''),
+                        'display_title': slide.get('display_title', ''),
+                        'notes': slide.get('notes', '')
+                    }
+                    slides.append(slide_info)
+            
+            result = {
+                'item_title': service_item.title,
+                'item_type': service_item.name,
+                'slide_count': len(slides),
+                'slides': slides
+            }
+            
+            self.operation_completed.emit(result)
+        except Exception as e:
+            self.operation_completed.emit(f"Error getting service item slides: {str(e)}") 
