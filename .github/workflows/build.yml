@@ -164,6 +164,7 @@ jobs:
       run: |
         # Install dependencies using uv with optional extras for macOS builds
         uv sync --extra darkstyle --extra mysql --extra spellcheck --extra sword-bibles --extra test
+        source .venv/bin/activate
     
     - name: Generate resources
       run: |
