@@ -149,10 +149,13 @@ jobs:
     
     - name: Install system dependencies
       run: |
-        # Install enchant library
-        brew install enchant
+        # Install enchant library and ICU for PyICU
+        brew install enchant icu4c
         # Export the library path that the builder expects
         echo "PYENCHANT_LIBRARY_PATH=/opt/homebrew/lib/libenchant-2.2.dylib" >> $GITHUB_ENV
+        # Set up ICU paths for PyICU compilation
+        echo "PATH=$PATH:/opt/homebrew/opt/icu4c/bin:/opt/homebrew/opt/icu4c/sbin" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/opt/homebrew/opt/icu4c/lib/pkgconfig" >> $GITHUB_ENV
         # Install uv
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
