@@ -62,6 +62,7 @@ dependencies = [
     "Mako",
     "packaging",
     "platformdirs",
+    "py-applescript; platform_system=='Darwin'",
     "PyICU",
     "pyobjc; platform_system=='Darwin'",
     "pyobjc-framework-Cocoa; platform_system=='Darwin'",
@@ -82,7 +83,7 @@ dependencies = [
 
 [project.optional-dependencies]
 darkstyle = ["QDarkStyle"]
-mysql = ["PyMySQL"]
+mysql = ["PyMySQL", "mysql-connector-python"]
 odbc = ["pyodbc"]
 postgresql = ["psycopg2_binary"]
 spellcheck = ["pyenchant >= 1.6"]
