@@ -122,8 +122,7 @@ jobs:
     
     - name: Install system dependencies
       run: |
-        # Install enchant library and ICU for PyICU
-        brew install enchant icu4c
+        brew install enchant icu4c unixodbc
         # Export the library path that the builder expects
         echo "PYENCHANT_LIBRARY_PATH=/opt/homebrew/lib/libenchant-2.2.dylib" >> $GITHUB_ENV
         # Set up ICU paths for PyICU compilation
