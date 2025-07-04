@@ -42,7 +42,6 @@ hiddenimports = [
     'openlp.plugins.mcp.url_utils',
     'openlp.plugins.mcp.conversion',
     'fastmcp',
-    'yt-dlp'
 ]
 
 # Print debug info

@@ -67,36 +67,9 @@ jobs:
       run: |
         # Generate the Qt resources file that contains icons and images
         pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
-        # Remove the first 5 lines (comments) and add proper header
-        $header = @"
-        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
-
-        ##########################################################################
-        # OpenLP - Open Source Lyrics Projection                                 #
-        # ---------------------------------------------------------------------- #
-        # Copyright (c) 2008-2024 OpenLP Developers                              #
-        # ---------------------------------------------------------------------- #
-        # This program is free software: you can redistribute it and/or modify   #
-        # it under the terms of the GNU General Public License as published by   #
-        # the Free Software Foundation, either version 3 of the License, or      #
-        # (at your option) any later version.                                    #
-        #                                                                        #
-        # This program is distributed in the hope that it will be useful,        #
-        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
-        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
-        # GNU General Public License for more details.                           #
-        #                                                                        #
-        # You should have received a copy of the GNU General Public License      #
-        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
-        ##########################################################################
-        """
-        The :mod:`resources` module provides application images and icons in a central
-        store for use by OpenLP.
-        """
-        "@
-        # Combine header with generated content (skip first 5 lines)
+        # Remove the first 5 lines (Qt's default comments) and add a simple header
         $content = Get-Content openlp/core/resources.py.new | Select-Object -Skip 5
-        $header + "`n" + ($content -join "`n") | Out-File openlp/core/resources.py -Encoding utf8
+        "# Auto-generated Qt resources file - do not edit manually" + "`n" + ($content -join "`n") | Out-File openlp/core/resources.py -Encoding utf8
         # Clean up
         Remove-Item openlp/core/resources.py.new
     
@@ -169,36 +142,10 @@ jobs:
     - name: Generate resources
       run: |
         # Generate the Qt resources file that contains icons and images
-        pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
-        # Remove the first 5 lines (comments)
+        uv run pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Remove the first 5 lines (Qt's default comments) and add a simple header
         tail -n +6 openlp/core/resources.py.new > openlp/core/resources.py.tmp
-        # Add the proper header and apply patches
-        cat > openlp/core/resources.py << 'EOF'
-        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
-
-        ##########################################################################
-        # OpenLP - Open Source Lyrics Projection                                 #
-        # ---------------------------------------------------------------------- #
-        # Copyright (c) 2008-2024 OpenLP Developers                              #
-        # ---------------------------------------------------------------------- #
-        # This program is free software: you can redistribute it and/or modify   #
-        # it under the terms of the GNU General Public License as published by   #
-        # the Free Software Foundation, either version 3 of the License, or      #
-        # (at your option) any later version.                                    #
-        #                                                                        #
-        # This program is distributed in the hope that it will be useful,        #
-        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
-        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
-        # GNU General Public License for more details.                           #
-        #                                                                        #
-        # You should have received a copy of the GNU General Public License      #
-        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
-        ##########################################################################
-        """
-        The :mod:`resources` module provides application images and icons in a central
-        store for use by OpenLP.
-        """
-        EOF
+        echo "# Auto-generated Qt resources file - do not edit manually" > openlp/core/resources.py
         cat openlp/core/resources.py.tmp >> openlp/core/resources.py
         # Clean up temporary files
         rm -f openlp/core/resources.py.new openlp/core/resources.py.tmp
@@ -257,35 +204,9 @@ jobs:
       run: |
         # Generate the Qt resources file that contains icons and images
         pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
-        # Remove the first 5 lines (comments)
+        # Remove the first 5 lines (Qt's default comments) and add a simple header
         tail -n +6 openlp/core/resources.py.new > openlp/core/resources.py.tmp
-        # Add the proper header
-        cat > openlp/core/resources.py << 'EOF'
-        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
-
-        ##########################################################################
-        # OpenLP - Open Source Lyrics Projection                                 #
-        # ---------------------------------------------------------------------- #
-        # Copyright (c) 2008-2024 OpenLP Developers                              #
-        # ---------------------------------------------------------------------- #
-        # This program is free software: you can redistribute it and/or modify   #
-        # it under the terms of the GNU General Public License as published by   #
-        # the Free Software Foundation, either version 3 of the License, or      #
-        # (at your option) any later version.                                    #
-        #                                                                        #
-        # This program is distributed in the hope that it will be useful,        #
-        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
-        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
-        # GNU General Public License for more details.                           #
-        #                                                                        #
-        # You should have received a copy of the GNU General Public License      #
-        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
-        ##########################################################################
-        """
-        The :mod:`resources` module provides application images and icons in a central
-        store for use by OpenLP.
-        """
-        EOF
+        echo "# Auto-generated Qt resources file - do not edit manually" > openlp/core/resources.py
         cat openlp/core/resources.py.tmp >> openlp/core/resources.py
         # Clean up temporary files
         rm -f openlp/core/resources.py.new openlp/core/resources.py.tmp
