@@ -1,0 +1,277 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  PYTHON_VERSION_WINDOWS_AND_MACOS: "3.12"
+
+jobs:
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install dependencies
+        run: |
+          uv sync --extra darkstyle --extra mysql --extra odbc --extra postgresql --extra spellcheck --extra sword-bibles --extra test
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+      
+      - name: Run flake8
+        run: uv run flake8
+
+  lint-javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+      
+      - name: Install dependencies
+        run: yarn install
+      
+      - name: Run linting
+        run: yarn lint
+
+  test-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os-variant: ['ubuntu-latest', 'ubuntu-20.04']
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libegl1-mesa libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+      
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra darkstyle --extra mysql --extra odbc --extra postgresql --extra spellcheck --extra sword-bibles --extra test
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+      
+      - name: Run tests with coverage
+        run: |
+          xvfb-run -s '-screen 0 1024x768x24' uv run pytest --color=no --disable-warnings --cov openlp --cov-report term --cov-report xml:coverage.xml
+        env:
+          QT_QPA_PLATFORM: offscreen
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.os-variant == 'ubuntu-latest'
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  test-pypi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libegl1-mesa libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+      
+      - name: Install Python dependencies
+        run: |
+          uv add --dev alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+      
+      - name: Run tests
+        run: |
+          xvfb-run -s '-screen 0 1024x768x24' uv run pytest --color=no --disable-warnings
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  test-fedora:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install system dependencies
+        run: |
+          dnf install -y python3 python3-pip git xorg-x11-server-Xvfb
+      
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra darkstyle --extra mysql --extra odbc --extra postgresql --extra spellcheck --extra sword-bibles --extra test
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+      
+      - name: Run tests
+        run: |
+          xvfb-run -s '-screen 0 1024x768x24' uv run pytest --color=no --disable-warnings
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  test-arch:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install system dependencies
+        run: |
+          pacman -Syu --noconfirm python python-pip git xorg-server-xvfb
+      
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra darkstyle --extra mysql --extra odbc --extra postgresql --extra spellcheck --extra sword-bibles --extra test
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+      
+      - name: Run tests
+        run: |
+          xvfb-run -s '-screen 0 1024x768x24' uv run pytest --color=no --disable-warnings
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION_WINDOWS_AND_MACOS }}
+      
+      - name: Install system dependencies
+        run: |
+          export HOMEBREW_NO_AUTO_UPDATE=TRUE
+          export HOMEBREW_NO_INSTALL_CLEANUP=TRUE
+          export HOMEBREW_NO_ENV_HINTS=TRUE
+          brew install pkg-config icu4c
+      
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra darkstyle --extra mysql --extra odbc --extra postgresql --extra spellcheck --extra sword-bibles --extra test
+          export PATH="$PATH:/opt/homebrew/opt/icu4c/bin:/opt/homebrew/opt/icu4c/sbin"
+          export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/opt/homebrew/opt/icu4c/lib/pkgconfig"
+          uv add py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 pyicu
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+      
+      - name: Run tests
+        run: uv run pytest --color=no --disable-warnings
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION_WINDOWS_AND_MACOS }}
+      
+      - name: Download required files for PySide6
+        run: |
+          $zipFileName = 'requiredfiles.zip'
+          Invoke-WebRequest -OutFile "$env:Temp\$zipFileName" -Uri "https://get.openlp.org/win-sdk/$zipFileName"
+          Expand-Archive -Path "$env:Temp\$zipFileName" -DestinationPath "C:\Windows\System32"
+      
+      - name: Install Python dependencies
+        run: |
+          uv sync --extra darkstyle --extra mysql --extra odbc --extra postgresql --extra spellcheck --extra sword-bibles --extra test
+          uv add pyodbc pypiwin32
+          $pyIcuVersion = '2.14'
+          $pythonVersion = '${{ env.PYTHON_VERSION_WINDOWS_AND_MACOS }}'.Replace('.', '')
+          $pyIcuPackageFileName = "PyICU-$pyIcuVersion-cp$pythonVersion-cp$pythonVersion-win_amd64.whl"
+          uv pip install "https://github.com/cgohlke/pyicu-build/releases/download/v$pyIcuVersion/$pyIcuPackageFileName"
+      
+      - name: Generate resources
+        run: sh scripts/generate_resources.sh
+        shell: bash
+      
+      - name: Run tests
+        run: uv run pytest --color=no --disable-warnings
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  test-display:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+      
+      - name: Install dependencies
+        run: yarn install
+      
+      - name: Run display tests
+        run: yarn test --browsers ChromiumHeadlessCI 
