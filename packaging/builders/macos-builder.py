@@ -288,7 +288,7 @@ class MacOSBuilder(Builder):
         """
         self._print('Installing Pyro5 for LibreOffice')
         target = os.path.join(self.dist_path, 'plugins', 'presentations', 'lib', 'vendor')
-        argv = ['uv', 'pip', 'install', 'Pyro5', '-t', target, '--disable-pip-version-check', '--no-compile']
+        argv = ['uv', 'pip', 'install', 'Pyro5', '--', '-t', target, '--disable-pip-version-check', '--no-compile']
         self._run_command(argv, 'Error installing Pyro5 with uv')
         egg_info_glob = glob.glob(os.path.join(target, '*.egg-info'))
         egg_info_glob.extend(glob.glob(os.path.join(target, '*.dist-info')))
