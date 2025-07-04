@@ -209,7 +209,7 @@ jobs:
     - name: Build macOS app
       run: |
         cd packaging/builders
-        python macos-builder.py --config ../macos/config.ini --skip-update
+        uv run macos-builder.py --config ../macos/config.ini --skip-update
       env:
         PYTHONPATH: packaging/builders
         PYENCHANT_LIBRARY_PATH: /opt/homebrew/lib/libenchant-2.2.dylib
