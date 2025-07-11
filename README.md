@@ -1,6 +1,6 @@
 # OpenLP - Open Source Lyrics Projection
 
-**This is a fork of OpenLP with added MCP control capabilities for AI models.**
+**This is a fork of OpenLP with added MCP control capabilities for AI models and some other minor tweaks.**
 
 ## Overview
 
@@ -17,41 +17,10 @@ OpenLP is a free, open-source application for churches and other religious organ
 - **Theme Customization**: Custom fonts, colors, backgrounds, and layouts
 - **Multi-display Support**: Separate displays for stage and audience
 
-### 🤖 AI Control via MCP Plugin (New!)
-
-This fork introduces an MCP (Model Context Protocol) plugin that allows AI models to fully control OpenLP programmatically. **The MCP plugin is disabled by default** and must be manually enabled in the plugin settings.
-
-#### MCP Plugin Features:
-- **Complete Service Management**: Create, load, save, and manipulate services
-- **Smart Media Handling**: Automatic media type detection and proper plugin routing
-- **PowerPoint/PDF Support**: Auto-conversion of presentations with LibreOffice fallback
-- **Live Control**: Real-time slide navigation and theme switching
-- **URL Support**: Automatic download of media files, services, and themes from URLs
-- **Email Processing**: Parse emails to automatically create services
-- **Theme Management**: Create, modify, and apply themes programmatically
-- **Structured Data Import**: Build services from structured data sources
-
-#### Supported Media Types:
-- **Images**: JPG, PNG, GIF, SVG, WebP (via Images plugin)
-- **Videos**: MP4, AVI, MOV, WMV, etc. (via Media plugin)
-- **Audio**: MP3, WAV, OGG, FLAC, etc. (via Media plugin)
-- **Presentations**: PDF, PowerPoint (.pptx, .ppt), OpenDocument (.odp)
-- **Services**: OpenLP service files (.osz)
-- **Themes**: Background images for theme creation
-
-#### URL Support:
-The MCP plugin automatically downloads files from URLs including:
-- Direct file links (http/https/ftp/ftps)
-- Video platforms (YouTube, Vimeo, etc.)
-- Modern web services without traditional file extensions
-- Intelligent Content-Type detection
-
 ## Installation
 
 ### Requirements
 - Python 3.10 or higher
-- PySide6 (Qt6) GUI framework
-- Various platform-specific dependencies (see pyproject.toml)
 
 ### Standard Installation
 ```bash
@@ -60,18 +29,10 @@ git clone https://github.com/sethburkart123/openlp.git
 cd openlp
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -e .
 
 # Run OpenLP
 python run_openlp.py
-```
-
-### MCP Plugin Setup
-
-The MCP plugin requires the `fastmcp` library:
-
-```bash
-pip install fastmcp
 ```
 
 #### Enabling the MCP Plugin:
@@ -86,11 +47,9 @@ pip install fastmcp
 ```json
 {
   "mcpServers": {
-    "openlp-control": {
-      "transport": {
-        "type": "sse",
-        "url": "http://127.0.0.1:8765/sse"
-      }
+    "openlp": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8765/sse", "--allow-http"]
     }
   }
 }
@@ -98,45 +57,6 @@ pip install fastmcp
 
 2. Restart Claude Desktop
 3. The MCP server will be available when the plugin is enabled
-
-## Usage
-
-### Basic OpenLP Usage
-- Create a new service or load an existing one
-- Add songs, media, and presentations to your service
-- Use the live display to project content
-- Customize themes and layouts as needed
-
-### AI Control Examples
-
-Once the MCP plugin is enabled and connected to an AI model, you can:
-
-**Create a complete service:**
-```
-"Create a new service with:
-1. Welcome slide with church name
-2. Three worship songs about grace
-3. A sermon slide titled 'Finding Hope'
-4. Closing song
-Apply a blue gradient theme to everything."
-```
-
-**Add media from URLs:**
-```
-"Add this image to the service: https://unsplash.com/photos/church-interior
-Then add this video: https://www.youtube.com/watch?v=LRP8d7hhpoQ"
-```
-
-**Control live display:**
-```
-"Make the second service item live, then advance to the next slide"
-```
-
-**Process email content:**
-```
-"Create a service from this email: [paste email content]
-Extract the song list and create appropriate slides"
-```
 
 ### Building
 
