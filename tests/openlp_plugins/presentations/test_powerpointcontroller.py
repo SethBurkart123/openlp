@@ -532,6 +532,33 @@ def test_get_slide_count_does_not_export_if_not_loaded(presentation_setup):
 
 
 @pytest.mark.skipif(not is_win(), reason='This test only works on Windows')
+@patch('openlp.plugins.presentations.lib.powerpointcontroller.win32gui')
+@patch('openlp.plugins.presentations.lib.powerpointcontroller.win32con')
+def test_is_active_view_state_paused(mocked_win32con, mocked_win32gui, presentation_setup):
+    """
+    Test that is_active calls Activate and FlashWindowEx when View.State is paused (2).
+    """
+    # GIVEN: A PowerpointDocument with paused View state
+    doc = PowerpointDocument(MagicMock(), MagicMock())
+    doc.is_loaded = MagicMock(return_value=True)
+    doc.presentation = MagicMock()
+    slide_show_window = MagicMock()
+    view = MagicMock()
+    view.State = 2
+    slide_show_window.View = view
+    doc.presentation.SlideShowWindow = slide_show_window
+    doc.presentation_hwnd = 123
+
+    # WHEN: Calling is_active
+    result = doc.is_active()
+
+    # THEN: Activate should be called and FlashWindowEx should be called
+    slide_show_window.Activate.assert_called_once()
+    mocked_win32gui.FlashWindowEx.assert_called_once_with(123, mocked_win32con.FLASHW_STOP, 0, 0)
+    assert result is True
+
+
+@pytest.mark.skipif(not is_win(), reason='This test only works on Windows')
 def test_is_active_true(presentation_setup):
     """
     Test that is_active returns True when presentation and its slideshow window/view are all valid.

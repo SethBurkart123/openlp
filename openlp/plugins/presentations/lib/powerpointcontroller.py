@@ -297,6 +297,14 @@ class PowerpointDocument(PresentationDocument):
                 return False
             if self.presentation.SlideShowWindow.View is None:
                 return False
+            # If a fullscreen PowerPoint window had focus and then lost it,
+            # all animations and slide advancements are paused.
+            # is_active() is indirectly triggered by poll() in messagelistener.py every 0.5 seconds.
+            # If the PowerPoint presentation was paused, it is resumed here.
+            if self.presentation.SlideShowWindow.View.State == 2:
+                self.presentation.SlideShowWindow.Activate()
+                if self.presentation_hwnd:
+                    win32gui.FlashWindowEx(self.presentation_hwnd, win32con.FLASHW_STOP, 0, 0)
         except (AttributeError, pywintypes.com_error) as e:
             # PowerPoint COM error 2147188160: occurs in windowed mode with no SlideShowWindow. (e.g. ShowDesktop)
             error_code = getattr(e, 'excepinfo', [None] * 6)[5]

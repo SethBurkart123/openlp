@@ -161,7 +161,7 @@ class PresentationDocument(object):
                 folder = self._sha256_file_hash or self.file_path.name
         else:
             folder = self.file_path.name
-        return Path(self.controller.thumbnail_folder, folder)
+        return Path(self.controller.thumbnail_folder.resolve(), folder)
 
     def get_temp_folder(self):
         """
