@@ -71,5 +71,4 @@ def test_initialise(MockedManager, state, registry, mock_settings):
     presentations_plugin.initialise()
 
     # THEN: Nothing should break, and everything should be called
-    mock_settings.setValue.assert_called_with('presentations/thumbnail_scheme', 'sha256file')
     mock_settings.remove.assert_called_once_with('presentations/presentations files')

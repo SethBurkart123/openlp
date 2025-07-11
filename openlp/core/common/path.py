@@ -152,7 +152,7 @@ def resolve(path_obj, is_strict=False):
     :rtype: Path
     """
     if is_win():
-        resolved_path = Path(os.path.abspath(path_obj))
+        resolved_path = Path(os.path.realpath(path_obj))
         if is_strict:
             # Mirror the behaviour of Path.resolve(strict=True)
             resolved_path.lstat()

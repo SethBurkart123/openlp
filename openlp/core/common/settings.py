@@ -449,7 +449,6 @@ class Settings(QtCore.QSettings):
         'presentations/Keynote': QtCore.Qt.CheckState.Checked,
         'presentations/PowerPointMac': QtCore.Qt.CheckState.Checked,
         'presentations/presentations files': [],
-        'presentations/thumbnail_scheme': '',
         'presentations/powerpoint slide click advance': QtCore.Qt.CheckState.Unchecked,
         'presentations/powerpoint control window': QtCore.Qt.CheckState.Unchecked,
         'presentations/impress use display setting': QtCore.Qt.CheckState.Unchecked,
@@ -619,7 +618,8 @@ class Settings(QtCore.QSettings):
 
     # Settings upgrades for 4
     __setting_upgrade_4__ = [
-        ('media/vlc arguments', '', [])
+        ('media/vlc arguments', '', []),
+        ('presentations/thumbnail_scheme', '', []),
     ]
 
     @staticmethod

@@ -49,6 +49,12 @@ SEARCH_TYPES = [(SearchTypes.First, QtGui.QIcon(), "First", "First Placeholder T
                 (SearchTypes.Second, QtGui.QIcon(), "Second", SECOND_PLACEHOLDER_TEXT)]
 
 
+if is_win():
+    p_prefix = 'C:\\'
+else:
+    p_prefix = ''
+
+
 @pytest.fixture()
 @patch('openlp.core.ui.icons.is_ui_theme_dark')
 def search_edit(mock_is_dark: MagicMock, mock_settings: MagicMock) -> SearchEdit:
@@ -87,12 +93,6 @@ def test_path_getter(path_edit: PathEdit):
     # WHEN: Reading the `path` property
     # THEN: The value that we set should be returned
     assert path_edit.path == Path('getter', 'test', 'pat.h')
-
-
-if is_win():
-    p_prefix = 'C:\\'
-else:
-    p_prefix = ''
 
 
 @pytest.mark.parametrize('prop, expected', [
@@ -364,6 +364,22 @@ def test_on_new_path_change(path_edit: PathEdit):
 
         # THEN: The `pathChanged` signal should be emitted
         path_edit.pathChanged.emit.assert_called_once_with(Path('/new', 'test', 'pat.h'))
+
+
+def test_on_new_path_none(path_edit: PathEdit):
+    """
+    Test `on_new_path` when called with a path that is None
+    """
+    # GIVEN: An instance of PathEdit with a test path and mocked `pathChanged` signal
+    with patch('openlp.core.widgets.edits.PathEdit.path', new_callable=PropertyMock):
+        path_edit._path = Path('/old', 'test', 'pat.h')
+        path_edit.pathChanged = MagicMock()
+
+        # WHEN: Calling `on_new_path` with the same path as the existing path
+        path_edit.on_new_path(None)
+
+        # THEN: The `pathChanged` signal should not be emitted
+        assert path_edit.pathChanged.emit.called is False
 
 
 def test_set_search_types(search_edit: SearchEdit):

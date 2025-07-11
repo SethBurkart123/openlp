@@ -19,13 +19,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
 ##########################################################################
 import logging
-import os
-import shutil
 
 from PySide6 import QtCore, QtWidgets
 from pathlib import Path
 
-from openlp.core.common import sha256_file_hash
 from openlp.core.common.i18n import UiStrings, translate
 from openlp.core.common.registry import Registry
 from openlp.core.lib import ServiceItemContext, build_icon, create_thumb, validate_thumb
@@ -248,37 +245,6 @@ class PresentationMediaItem(FolderLibraryItem):
                 else:
                     doc.presentation_deleted()
                 doc.close_presentation()
-
-    def update_thumbnail_scheme(self, file_path):
-        """
-        Update the thumbnail folder naming scheme to the new sha256 based one.
-        """
-        # TODO: Can be removed when the upgrade path to OpenLP 3.0 is no longer needed, also ensure code in
-        #       PresentationDocument.get_thumbnail_folder and PresentationDocument.get_temp_folder is removed
-        for cidx in self.controllers:
-            if not self.controllers[cidx].enabled():
-                # skip presentation controllers that are not enabled
-                continue
-            file_ext = file_path.suffix[1:]
-            if file_ext in self.controllers[cidx].supports or file_ext in self.controllers[cidx].also_supports:
-                doc = self.controllers[cidx].add_document(file_path)
-                # Check if the file actually exists
-                if file_path.exists():
-                    thumb_path = doc.get_thumbnail_folder()
-                    hash = sha256_file_hash(file_path)
-                    # Rename the thumbnail folder so that it uses the sha256 naming scheme
-                    if thumb_path.exists():
-                        new_folder = Path(os.path.split(thumb_path)[0]) / hash
-                        log.info('Moved thumbnails from {md5} to {sha256}'.format(md5=str(thumb_path),
-                                                                                  sha256=str(new_folder)))
-                        shutil.move(thumb_path, new_folder)
-                    # Rename the data folder, if one exists
-                    old_folder = doc.get_temp_folder()
-                    if old_folder.exists():
-                        new_folder = Path(os.path.split(old_folder)[0]) / hash
-                        log.info('Moved data from {md5} to {sha256}'.format(md5=str(old_folder),
-                                                                            sha256=str(new_folder)))
-                        shutil.move(old_folder, new_folder)
 
     def generate_slide_data(self, service_item, *, item=None, remote=False, context=ServiceItemContext.Service,
                             file_path=None, **kwargs):

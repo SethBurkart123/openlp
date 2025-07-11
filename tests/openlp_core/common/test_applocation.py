@@ -148,7 +148,7 @@ def test_get_directory_for_plugins_dir(mocked_sys, mocked_resolve, mocked_get_fr
     """
     Test the AppLocation.get_directory() method for AppLocation.PluginsDir
     """
-    # GIVEN: _get_frozen_path, abspath, split and sys are mocked out
+    # GIVEN: get_frozen_path, resolve and sys are mocked out
     mocked_resolve.return_value = Path('dir/plugins')
     mocked_get_frozen_path.return_value = Path('dir')
     mocked_sys.frozen = 1

@@ -271,9 +271,9 @@ def test_resolve_posix(mocked_is_win):
 
 
 @patch('openlp.core.common.path.is_win')
-@patch('openlp.core.common.path.os.path.abspath')
+@patch('openlp.core.common.path.os.path.realpath')
 @patch('openlp.core.common.path.Path')
-def test_resolve_windows(MockPath, mocked_abspath, mocked_is_win):
+def test_resolve_windows(MockPath, mocked_realpath, mocked_is_win):
     """Test the resolve() method correctly resolves Windows paths"""
     # GIVEN: A mocked WindowsPath class
     mocked_is_win.return_value = True
@@ -285,5 +285,5 @@ def test_resolve_windows(MockPath, mocked_abspath, mocked_is_win):
     resolve(mocked_path, is_strict=True)
 
     # THEN: the Path.resolve() method should have been called
-    mocked_abspath.assert_called_once_with(mocked_path)
+    mocked_realpath.assert_called_once_with(mocked_path)
     mocked_path.lstat.assert_called_once_with()

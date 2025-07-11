@@ -63,7 +63,12 @@ class HttpWorker(ThreadWorker):
         """
         if hasattr(self, 'server'):
             # Loop through all the channels and close them to stop the server
-            channels = list(self.server._map.values())
+            if hasattr(self.server, 'map'):
+                channels = list(self.server.map.values())
+            elif hasattr(self.server, '_map'):
+                channels = list(self.server._map.values())
+            else:
+                channels = []
             for channel in channels:
                 if hasattr(channel, 'close'):
                     channel.close()

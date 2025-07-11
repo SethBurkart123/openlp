@@ -21,7 +21,6 @@
 """
 This module contains tests for the PdfController
 """
-import os
 import pytest
 from pathlib import Path
 from shutil import rmtree
@@ -105,7 +104,7 @@ def test_load_pdf_pictures(pdf_env):
 
     # THEN: The load should succeed and pictures should be created and have been scaled to fit the screen
     assert loaded is True, 'The loading of the PDF should succeed.'
-    image = QtGui.QImage(os.path.join(str(temp_folder_path), 'pdf_test1.pdf', 'mainslide001.png'))
+    image = QtGui.QImage(document.image_files[0])
     # Calculate the width of the PDF based on the aspect ratio of the PDF
     height = 768
     width = int(round(height * 0.70572917, 0))

@@ -77,11 +77,6 @@ class PresentationPlugin(Plugin):
         Initialise the plugin. Determine which controllers are enabled are start their processes.
         """
         log.info('Presentations Initialising')
-        # Check if the thumbnail scheme needs to be updated
-        has_old_scheme = False
-        if self.settings.value('presentations/thumbnail_scheme') != 'sha256file':
-            self.settings.setValue('presentations/thumbnail_scheme', 'sha256file')
-            has_old_scheme = True
         # Migrate each file
         presentation_paths = self.settings.value('presentations/presentations files') or []
         for presentation_path in presentation_paths:
@@ -93,8 +88,6 @@ class PresentationPlugin(Plugin):
             item = Item(name=path.name, file_path=str(path))
             self.media_item.clean_up_thumbnails(path, clean_for_update=True)
             item.file_hash = sha256_file_hash(path)
-            if has_old_scheme:
-                self.media_item.update_thumbnail_scheme(path)
             self.manager.save_object(item)
         self.settings.remove('presentations/presentations files')
         super().initialise()

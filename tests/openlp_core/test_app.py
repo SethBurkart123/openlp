@@ -507,7 +507,8 @@ def test_main_future_settings(mock_move: MagicMock, mock_get_path: MagicMock, mo
 
 
 if is_win():
-    p_prefix = 'C:'
+    import os
+    p_prefix = os.path.splitdrive(os.getcwd())[0]
 else:
     p_prefix = ''
 

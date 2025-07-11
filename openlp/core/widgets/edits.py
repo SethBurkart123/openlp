@@ -350,7 +350,7 @@ class PathEdit(QtWidgets.QWidget):
         :param Path path: The new path
         :rtype: None
         """
-        if self._path != path:
+        if path and self._path != path:
             self.path = path
             self.pathChanged.emit(path)
 

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from PySide6 import QtCore
 
-from openlp.core.common import Singleton, md5_hash, sha256_file_hash
+from openlp.core.common import Singleton, sha256_file_hash
 from openlp.core.common.applocation import AppLocation
 from openlp.core.common.path import create_paths
 from openlp.core.common.registry import Registry
@@ -147,44 +147,26 @@ class PresentationDocument(object):
         :return: The path to the thumbnail
         :rtype: Path
         """
-        # TODO: Can be removed when the upgrade path to OpenLP 3.0 is no longer needed, also ensure code in
-        #       get_temp_folder and PresentationPluginapp_startup is removed
-        if self.settings.value('presentations/thumbnail_scheme') == 'md5':
-            folder = md5_hash(bytes(self.file_path))
-        elif self.settings.value('presentations/thumbnail_scheme') == 'sha256file':
-            if self._sha256_file_hash:
-                folder = self._sha256_file_hash
-            else:
-                self._sha256_file_hash = sha256_file_hash(self.file_path)
-                # If the sha256_file_hash() function encounters an error, it will return None, so use the
-                # filename as the thumbnail folder if the result is None (or falsey).
-                folder = self._sha256_file_hash or self.file_path.name
-        else:
-            folder = self.file_path.name
-        return Path(self.controller.thumbnail_folder.resolve(), folder)
+        return self.get_folder(self.controller.thumbnail_folder)
 
     def get_temp_folder(self):
         """
-        The location where thumbnail images will be stored
+        The location where temporary files will be stored
 
         :return: The path to the temporary file folder
         :rtype: Path
         """
-        # TODO: Can be removed when the upgrade path to OpenLP 3.0 is no longer needed, also ensure code in
-        #       get_thumbnail_folder and PresentationPluginapp_startup is removed
-        if self.settings.value('presentations/thumbnail_scheme') == 'md5':
-            folder = md5_hash(bytes(self.file_path))
-        elif self.settings.value('presentations/thumbnail_scheme') == 'sha256file':
-            if self._sha256_file_hash:
-                folder = self._sha256_file_hash
-            else:
-                self._sha256_file_hash = sha256_file_hash(self.file_path)
-                # If the sha256_file_hash() function encounters an error, it will return None, so use the
-                # filename as the temp folder if the result is None (or falsey).
-                folder = self._sha256_file_hash or self.file_path.name
+        return self.get_folder(self.controller.temp_folder)
+
+    def get_folder(self, root_folder: Path):
+        if self._sha256_file_hash:
+            path = self._sha256_file_hash
         else:
-            folder = self.file_path.name
-        return Path(self.controller.temp_folder, folder)
+            self._sha256_file_hash = sha256_file_hash(self.file_path)
+            # If the sha256_file_hash() function encounters an error, it will return None, so use the
+            # filename as the temp folder if the result is None (or falsey).
+            path = self._sha256_file_hash or self.file_path.name
+        return Path(root_folder, path)
 
     def check_thumbnails(self):
         """
