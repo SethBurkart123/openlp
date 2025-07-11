@@ -1,6 +1,8 @@
-# OpenLP - Open Source Lyrics Projection
+# OpenLP + MCP Support
 
 **This is a fork of OpenLP with added MCP control capabilities for AI models and some other minor tweaks.**
+
+<img width="1920" height="1440" alt="649shots_so" src="https://github.com/user-attachments/assets/2977eeca-1713-49ae-a452-d20e8a375953" />
 
 ## Overview
 
