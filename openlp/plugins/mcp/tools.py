@@ -68,183 +68,72 @@ class MCPToolsManager:
 
         @self.mcp_server.tool()
         def load_service(file_path: str) -> str:
-            """Load a service from a file path or URL. URLs will be downloaded automatically."""
+            """Load service from file path or URL (auto-downloads)."""
             self.worker.load_service_requested.emit(file_path)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def save_service(file_path: str) -> str:
-            """Save the current service to a file.
-            
-            Args:
-                file_path: Full path where to save the service file. Supports:
-                    - Absolute paths: "/Users/username/Desktop/MyService.osj" 
-                    - Relative paths: "services/MyService.osj" (relative to user's home directory)
-                    - Filename only: "MyService.osj" (saves to ~/Documents/OpenLP Services/)
-                    - Empty string: "" (auto-generates timestamp filename in ~/Documents/OpenLP Services/)
-                    
-            File Extensions:
-                - .osj (recommended): Standard OpenLP service file with embedded media
-                - .osz: Compressed OpenLP service file
-                - If no extension provided, .osj will be added automatically
-                
-            Examples:
-                save_service("")                                    # Auto: ~/Documents/OpenLP Services/Service_2024-01-15_14-30-45.osj
-                save_service("Service")                      # Auto .osj: ~/Documents/OpenLP Services/Sunday Service.osj  
-                save_service("Christmas Eve.osz")                   # Custom ext: ~/Documents/OpenLP Services/Christmas Eve.osz
-                save_service("events/Easter.osj")                   # Relative: ~/events/Easter.osj
-                save_service("/Users/john/Desktop/Backup.osj")      # Absolute: /Users/john/Desktop/Backup.osj
-            """
+            """Save current service to file. Supports absolute/relative paths, filename only, or empty string for auto-generated name. Defaults to .osj format, can use .osz for compressed."""
             self.worker.save_service_requested.emit(file_path)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def get_service_items() -> List[Dict[str, Any]]:
-            """Get all items in the current service."""
+            """Get all service items with details."""
             self.worker.get_service_items_requested.emit()
             return self.worker.wait_for_result()
 
         # Service item positioning tools
         @self.mcp_server.tool()
         def move_service_item(from_index: int, to_index: int) -> str:
-            """Move a service item from one position to another.
-            
-            Args:
-                from_index: Current position of the item (0-based index)
-                to_index: Target position for the item (0-based index)
-                
-            Examples:
-                move_service_item(0, 3)    # Move first item to 4th position
-                move_service_item(2, 0)    # Move 3rd item to the beginning
-                move_service_item(1, -1)   # Move 2nd item to the end
-            """
+            """Move service item. Indices are 0-based. Use -1 for end."""
             self.worker.move_service_item_requested.emit(from_index, to_index)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def remove_service_item(index: int) -> str:
-            """Remove a service item at the specified position.
-            
-            Args:
-                index: Position of the item to remove (0-based index)
-                
-            Examples:
-                remove_service_item(0)     # Remove first item
-                remove_service_item(2)     # Remove 3rd item
-            """
+            """Remove service item at index (0-based)."""
             self.worker.remove_service_item_requested.emit(index)
             return self.worker.wait_for_result()
 
         # Slide-level management tools
         @self.mcp_server.tool()
         def get_service_item_slides(item_index: int) -> List[Dict[str, Any]]:
-            """Get all slides within a specific service item.
-            
-            Args:
-                item_index: Index of the service item (0-based)
-                
-            Returns:
-                List of slide information including titles, text content, and slide indices
-            """
+            """Get slides within service item. Returns titles, text, indices."""
             self.worker.get_service_item_slides_requested.emit(item_index)
             return self.worker.wait_for_result()
 
         # Content creation tools
         @self.mcp_server.tool()
         def create_song(title: str, lyrics: str, author: str) -> str:
-            """Create a new song in the database. Returns the song ID and confirmation message.
-            
-            For lyrics formatting, use verse labels in square brackets. For example:
-            
-            [Verse 1]
-            Amazing grace how sweet the sound
-            That saved a wretch like me
-            
-            [Chorus]
-            How sweet the sound
-            That saved a wretch like me
-            
-            [Verse 2]  
-            I once was lost but now am found
-            Was blind but now I see
-            
-            [Bridge]
-            Through many dangers toils and snares
-            I have already come
-            
-            Supported labels: [Verse 1], [Verse 2], [Chorus], [Bridge], [Pre-Chorus], [Intro], [Outro], [Tag], [Other]"""
+            """Create song in database. Format lyrics with [Verse 1], [Chorus], etc. Supports: Verse, Chorus, Bridge, Pre-Chorus, Intro, Outro, Tag, Other. Returns song ID."""
             self.worker.create_song_requested.emit(title, lyrics, author)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def add_song_by_id(song_id: int, position: int) -> str:
-            """Add a song to the service by its database ID. 
-            
-            Args:
-                song_id: The database ID of the song to add
-                position: Position to INSERT the song (0-based index). Existing items at this position and beyond will be pushed down. Use -1 to append to the end.
-                
-            Examples:
-                add_song_by_id(123, -1)      # Appends song to the end of service
-                add_song_by_id(123, 0)       # Inserts song at beginning, pushes all existing items down
-                add_song_by_id(123, 2)       # Inserts song at position 2, pushes items 2+ down to 3+
-            """
-
+            """Add song by database ID. Position inserts at index (shifts existing items). Use -1 to append."""
             self.worker.add_song_by_id_requested.emit(song_id, position)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def add_custom_slides_to_service(title: str, slides: List[str], credits: str, position: int) -> str:
-            """Add custom slides to the current service. Can add single or multiple slides.
-            
-            Args:
-                title: The title for the custom slide item
-                slides: A list of text content for each slide (use single-item list for one slide)
-                credits: Credits text (use empty string for no credits)
-                position: Position to INSERT the slides (0-based index). Existing items at this position and beyond will be pushed down. Use -1 to append to the end.
-                
-            Examples:
-                # Single slide at end
-                add_custom_slides_to_service(
-                    "Welcome",
-                    ["Welcome to our service!"],
-                    "",
-                    -1
-                )
-                
-                # Multiple slides inserted at beginning (pushes all existing items down)
-                add_custom_slides_to_service(
-                    "Announcements",
-                    [
-                        "Welcome to our service!",
-                        "Please turn off your phones",
-                        "Join us for coffee after the service"
-                    ],
-                    "Church Staff",
-                    0  # Insert at beginning, existing items move to positions 1+
-                )
-            """
+            """Add custom slides. Each list item is a slide. Position inserts (shifts items). Use -1 to append."""
             self.worker.add_custom_slides_requested.emit(title, slides, credits, position)
             return self.worker.wait_for_result()
 
         # Search tools
         @self.mcp_server.tool()
         def search_songs(text: str) -> List[List[Any]]:
-            """Search for songs in the OpenLP database and return results with [id, title, alternate_title] format."""
+            """Search songs. Returns [[id, title, alternate_title], ...]."""
             self.worker.search_songs_requested.emit(text)
             return self.worker.wait_for_result()
 
         # Media management tools
         @self.mcp_server.tool()
         def add_media_to_service(file_path: str, title: str, position: int) -> str:
-            """Add a media file to the current service. Supports local file paths and URLs (http/https/ftp). 
-            URLs will be downloaded automatically. Supports images, videos, audio, and presentations (PDF, PowerPoint).
-            
-            Args:
-                file_path: Path to media file or URL
-                title: Custom title for the media item (use empty string for default)
-                position: Position to INSERT the media (0-based index). Existing items at this position and beyond will be pushed down. Use -1 to append to the end.
-            """
+            """Add media (image/video/audio/PDF/PowerPoint). Supports paths and URLs. Position inserts. Use -1 to append."""
             # Check if this is a PowerPoint file that will need conversion
             file_extension = Path(file_path).suffix.lower()
             powerpoint_extensions = {'.pptx', '.ppt', '.pps', '.ppsx'}
@@ -260,44 +149,44 @@ class MCPToolsManager:
         # Slide control tools
         @self.mcp_server.tool()
         def go_live_with_item(item_index: int) -> str:
-            """Make a specific service item live by index."""
+            """Make service item live."""
             self.worker.go_live_requested.emit(item_index)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def next_slide() -> str:
-            """Go to the next slide in the live item."""
+            """Next slide in live item."""
             self.worker.next_slide_requested.emit()
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def previous_slide() -> str:
-            """Go to the previous slide in the live item."""
+            """Previous slide in live item."""
             self.worker.previous_slide_requested.emit()
             return self.worker.wait_for_result()
 
         # Theme management tools
         @self.mcp_server.tool()
         def list_themes() -> List[str]:
-            """Get a list of all available themes."""
+            """List all available themes."""
             self.worker.list_themes_requested.emit()
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def set_service_theme(theme_name: str) -> str:
-            """Set the theme for the current service."""
+            """Set service-wide theme."""
             self.worker.set_theme_requested.emit(theme_name)
             return self.worker.wait_for_result()
 
         @self.mcp_server.tool()
         def set_item_theme(item_index: int, theme_name: str) -> str:
-            """Set a theme for a specific service item by index. Use 'none' or empty string to clear the item's theme."""
+            """Set item-specific theme. Use empty string to clear."""
             self.worker.set_item_theme_requested.emit(item_index, theme_name)
             return self.worker.wait_for_result()
         
         @self.mcp_server.tool()
         def get_item_theme(item_index: int) -> str:
-            """Get the theme information for a specific service item by index."""
+            """Get item's theme info."""
             self.worker.get_item_theme_requested.emit(item_index)
             return self.worker.wait_for_result()
 
@@ -311,7 +200,7 @@ class MCPToolsManager:
             font_main_size: int,
             font_main_color: str
         ) -> str:
-            """Create a new theme with essential properties. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
+            """Create theme. background_type: 'solid'/'gradient'/'image'. Image paths support URLs."""
             theme_data = {
                 'theme_name': theme_name,
                 'background_type': background_type,
@@ -326,7 +215,7 @@ class MCPToolsManager:
         
         @self.mcp_server.tool()
         def get_theme_details(theme_name: str) -> str:
-            """Get details of an existing theme."""
+            """Get theme details."""
             self.worker.get_theme_details_requested.emit(theme_name)
             return self.worker.wait_for_result()
         
@@ -340,7 +229,7 @@ class MCPToolsManager:
             font_main_size: int,
             font_main_color: str
         ) -> str:
-            """Update properties of an existing theme. Only specified properties will be changed. Use empty strings or -1 for unchanged values. background_image_path supports both local file paths and URLs (http/https/ftp) - URLs will be downloaded automatically."""
+            """Update theme selectively. Pass empty string "" to skip text fields, -1 to skip font_main_size. Only changed fields are updated."""
             updates = {}
             for key, value in locals().items():
                 if key != 'self' and key != 'theme_name' and key != 'updates':
@@ -353,13 +242,13 @@ class MCPToolsManager:
         
         @self.mcp_server.tool()
         def delete_theme(theme_name: str) -> str:
-            """Delete a theme (cannot delete default theme)."""
+            """Delete theme (except default)."""
             self.worker.delete_theme_requested.emit(theme_name)
             return self.worker.wait_for_result()
         
         @self.mcp_server.tool()
         def duplicate_theme(existing_theme_name: str, new_theme_name: str) -> str:
-            """Create a copy of an existing theme with a new name."""
+            """Copy theme with new name."""
             self.worker.duplicate_theme_requested.emit(existing_theme_name, new_theme_name)
             return self.worker.wait_for_result()
     
