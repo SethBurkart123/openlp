@@ -317,7 +317,7 @@ class MCPWorker(QtCore.QObject):
                 if position == -1:
                     service_manager.add_service_item(service_item)
                 else:
-                    service_manager.add_service_item(service_item, replace=False, position=position)
+                    service_manager.add_service_item(service_item, position=position)
                 service_manager.repaint_service_list(-1, -1)
                 
                 self.operation_completed.emit(f"Custom slides '{title}' with {len(slides)} slides added to service and database")
@@ -406,7 +406,7 @@ class MCPWorker(QtCore.QObject):
         if position == -1:
             service_manager.add_service_item(service_item)
         else:
-            service_manager.add_service_item(service_item, replace=False, position=position)
+            service_manager.add_service_item(service_item, position=position)
         service_manager.repaint_service_list(-1, -1)
         self.operation_completed.emit(f"Image '{service_item.title}' added to service")
     
@@ -440,7 +440,7 @@ class MCPWorker(QtCore.QObject):
         if position == -1:
             service_manager.add_service_item(service_item)
         else:
-            service_manager.add_service_item(service_item, replace=False, position=position)
+            service_manager.add_service_item(service_item, position=position)
         service_manager.repaint_service_list(-1, -1)
         
         media_type = "video" if is_video else "audio"
@@ -1291,7 +1291,7 @@ class MCPWorker(QtCore.QObject):
                 if position == -1:
                     service_manager.add_service_item(service_item)
                 else:
-                    service_manager.add_service_item(service_item, replace=False, position=position)
+                    service_manager.add_service_item(service_item, position=position)
                 
                 success_msg = f"Song '{song.title}' (ID: {song_id}) added to service"
                 log.info(success_msg)

@@ -162,12 +162,12 @@ class MCPToolsManager:
             
             Args:
                 song_id: The database ID of the song to add
-                position: Position to insert the song (0-based index). Use -1 to append to the end.
+                position: Position to INSERT the song (0-based index). Existing items at this position and beyond will be pushed down. Use -1 to append to the end.
                 
             Examples:
-                add_song_by_id(123, -1)      # Adds song to the end of service
-                add_song_by_id(123, 0)       # Adds song at the beginning
-                add_song_by_id(123, 2)       # Adds song at position 2 (3rd item)
+                add_song_by_id(123, -1)      # Appends song to the end of service
+                add_song_by_id(123, 0)       # Inserts song at beginning, pushes all existing items down
+                add_song_by_id(123, 2)       # Inserts song at position 2, pushes items 2+ down to 3+
             """
 
             self.worker.add_song_by_id_requested.emit(song_id, position)
@@ -181,10 +181,10 @@ class MCPToolsManager:
                 title: The title for the custom slide item
                 slides: A list of text content for each slide (use single-item list for one slide)
                 credits: Credits text (use empty string for no credits)
-                position: Position to insert the slides (0-based index). Use -1 to append to the end.
+                position: Position to INSERT the slides (0-based index). Existing items at this position and beyond will be pushed down. Use -1 to append to the end.
                 
             Examples:
-                # Single slide
+                # Single slide at end
                 add_custom_slides_to_service(
                     "Welcome",
                     ["Welcome to our service!"],
@@ -192,7 +192,7 @@ class MCPToolsManager:
                     -1
                 )
                 
-                # Multiple slides at specific position
+                # Multiple slides inserted at beginning (pushes all existing items down)
                 add_custom_slides_to_service(
                     "Announcements",
                     [
@@ -201,7 +201,7 @@ class MCPToolsManager:
                         "Join us for coffee after the service"
                     ],
                     "Church Staff",
-                    0  # Add at beginning of service
+                    0  # Insert at beginning, existing items move to positions 1+
                 )
             """
             self.worker.add_custom_slides_requested.emit(title, slides, credits, position)
@@ -223,7 +223,7 @@ class MCPToolsManager:
             Args:
                 file_path: Path to media file or URL
                 title: Custom title for the media item (use empty string for default)
-                position: Position to insert the media (0-based index). Use -1 to append to the end.
+                position: Position to INSERT the media (0-based index). Existing items at this position and beyond will be pushed down. Use -1 to append to the end.
             """
             # Check if this is a PowerPoint file that will need conversion
             file_extension = Path(file_path).suffix.lower()
