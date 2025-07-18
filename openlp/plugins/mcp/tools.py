@@ -74,7 +74,27 @@ class MCPToolsManager:
 
         @self.mcp_server.tool()
         def save_service(file_path: str) -> str:
-            """Save the current service, optionally to a specific path (this must be an exact path). Use empty string for default location."""
+            """Save the current service to a file.
+            
+            Args:
+                file_path: Full path where to save the service file. Supports:
+                    - Absolute paths: "/Users/username/Desktop/MyService.osj" 
+                    - Relative paths: "services/MyService.osj" (relative to user's home directory)
+                    - Filename only: "MyService.osj" (saves to ~/Documents/OpenLP Services/)
+                    - Empty string: "" (auto-generates timestamp filename in ~/Documents/OpenLP Services/)
+                    
+            File Extensions:
+                - .osj (recommended): Standard OpenLP service file with embedded media
+                - .osz: Compressed OpenLP service file
+                - If no extension provided, .osj will be added automatically
+                
+            Examples:
+                save_service("")                                    # Auto: ~/Documents/OpenLP Services/Service_2024-01-15_14-30-45.osj
+                save_service("Service")                      # Auto .osj: ~/Documents/OpenLP Services/Sunday Service.osj  
+                save_service("Christmas Eve.osz")                   # Custom ext: ~/Documents/OpenLP Services/Christmas Eve.osz
+                save_service("events/Easter.osj")                   # Relative: ~/events/Easter.osj
+                save_service("/Users/john/Desktop/Backup.osj")      # Absolute: /Users/john/Desktop/Backup.osj
+            """
             self.worker.save_service_requested.emit(file_path)
             return self.worker.wait_for_result()
 

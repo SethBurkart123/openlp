@@ -191,24 +191,44 @@ class MCPWorker(QtCore.QObject):
         try:
             service_manager = Registry().get('service_manager')
             
-            # If no file path provided, create a default one
+            from pathlib import Path
+            import datetime
+            
+            # Handle different input cases
             if not file_path or not file_path.strip():
-                from pathlib import Path
-                import datetime
-                
-                # Get the user's Documents directory
+                # Empty string: create auto-generated filename
                 documents_dir = Path.home() / "Documents" / "OpenLP Services"
                 documents_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Create a default filename with timestamp
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                file_path = str(documents_dir / f"Service_{timestamp}.osj")
+                final_path = documents_dir / f"Service_{timestamp}.osj"
+            else:
+                # Non-empty string: process the path
+                input_path = Path(file_path.strip())
+                
+                if input_path.is_absolute():
+                    # Absolute path: use as-is
+                    final_path = input_path
+                elif '/' in str(input_path) or '\\' in str(input_path):
+                    # Relative path with directories: relative to home
+                    final_path = Path.home() / input_path
+                else:
+                    # Filename only: put in default OpenLP Services directory
+                    documents_dir = Path.home() / "Documents" / "OpenLP Services"
+                    documents_dir.mkdir(parents=True, exist_ok=True)
+                    final_path = documents_dir / input_path
+                
+                # Add .osj extension if no extension provided
+                if not final_path.suffix:
+                    final_path = final_path.with_suffix('.osj')
+            
+            # Ensure parent directory exists
+            final_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Set the file path and save
-            service_manager.set_file_name(Path(file_path))
+            service_manager.set_file_name(final_path)
             service_manager.save_file()  # Use save_file() instead of decide_save_method() to avoid dialog
             
-            self.operation_completed.emit(f"Service saved to {file_path}")
+            self.operation_completed.emit(f"Service saved to {final_path}")
         except Exception as e:
             self.operation_completed.emit(f"Error saving service: {str(e)}")
     
