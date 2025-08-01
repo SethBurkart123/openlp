@@ -33,6 +33,7 @@ def get_professional_template():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
     <style>{css}</style>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
         // Track if we're printing
         let isPrinting = false;
@@ -94,282 +95,63 @@ def get_professional_template():
         // Update scale when content changes
         setTimeout(updateScale, 100);
         
-        // Interactive editing functionality
-        let currentEditCell = null;
-        let originalContent = '';
+        // Unified editing system
+        let editing = null;
         
-        function makeEditable(element, rowId, field) {{
-            if (currentEditCell) return; // Already editing something
+        function edit(el, id, field, transform = x => x, validate = () => true) {{
+            if (editing) return;
+            editing = {{ el, original: el.innerHTML }};
+            el.contentEditable = true;
+            el.classList.add('editing');
+            el.textContent = transform(el.textContent);
+            el.focus();
+            el.selectAll?.() || el.select?.() || (window.getSelection().selectAllChildren(el));
             
-            currentEditCell = element;
-            originalContent = element.innerHTML;
+            const save = () => {{
+                const val = el.textContent.trim();
+                el.contentEditable = false;
+                el.classList.remove('editing');
+                editing = null;
+                if (validate(val)) {{
+                    window.bridge?.updateField(id, field, val);
+                    if (field === 'custom_notes' && !val) el.classList.add('hidden');
+                }} else el.innerHTML = editing.original;
+            }};
             
-            // Make the element contenteditable
-            element.contentEditable = true;
-            element.classList.add('editing');
-            element.focus();
+            const cancel = () => {{
+                el.contentEditable = false;
+                el.classList.remove('editing');
+                el.innerHTML = editing.original;
+                editing = null;
+            }};
             
-            // Select all text if it's not just a nbsp
-            if (element.textContent.trim()) {{
-                const range = document.createRange();
-                range.selectNodeContents(element);
-                const selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }}
-            
-            // Handle save
-            function saveEdit() {{
-                element.contentEditable = false;
-                element.classList.remove('editing');
-                const newValue = element.textContent.trim();
-                if (!newValue) {{
-                    element.innerHTML = '&nbsp;';
-                }}
-                currentEditCell = null;
-                
-                // Send update to Python
-                if (window.pywebchannel && window.bridge) {{
-                    window.bridge.updateField(rowId, field, newValue || '');
-                }}
-            }}
-            
-            // Handle cancel
-            function cancelEdit() {{
-                element.contentEditable = false;
-                element.classList.remove('editing');
-                element.innerHTML = originalContent;
-                currentEditCell = null;
-            }}
-            
-            // Handle keyboard events
-            function handleKeydown(e) {{
-                if (e.key === 'Enter' && !e.shiftKey) {{
-                    e.preventDefault();
-                    saveEdit();
-                }} else if (e.key === 'Escape') {{
-                    e.preventDefault();
-                    cancelEdit();
-                }}
-            }}
-            
-            // Handle blur event
-            function handleBlur() {{
-                saveEdit();
-                // Clean up event listeners
-                element.removeEventListener('keydown', handleKeydown);
-                element.removeEventListener('blur', handleBlur);
-            }}
-            
-            element.addEventListener('keydown', handleKeydown);
-            element.addEventListener('blur', handleBlur);
+            el.onkeydown = e => e.key === 'Enter' && !e.shiftKey ? (e.preventDefault(), save()) : e.key === 'Escape' ? cancel() : null;
+            el.onblur = save;
         }}
         
-        // Add section header functionality
-        function addSectionHeader(afterRowId) {{
-            if (window.pywebchannel && window.bridge) {{
-                const headerText = prompt('Enter section header text:');
-                if (headerText) {{
-                    window.bridge.addSectionHeader(afterRowId, headerText);
-                }}
+        window.makeEditable = (el, id, field) => edit(el, id, field);
+        window.addSectionHeader = id => window.bridge?.addSectionHeader(id, prompt('Header:'));
+        window.handleItemCellDoubleClick = (e, id) => {{
+            e.stopPropagation();
+            let notes = e.currentTarget.querySelector('.custom-notes');
+            if (!notes) {{
+                notes = Object.assign(document.createElement('div'), {{
+                    className: 'custom-notes editable visible',
+                    textContent: ''
+                }});
+                e.currentTarget.querySelector('.item-content-wrapper').appendChild(notes);
             }}
-        }}
-        
-        // Handle double-click on item cell for custom notes
-        function handleItemCellDoubleClick(event, itemId) {{
-            event.stopPropagation();
-            
-            // Find the custom notes element within this cell
-            const itemCell = event.currentTarget;
-            let customNotesDiv = itemCell.querySelector('.custom-notes');
-            
-            // If it doesn't exist or is hidden, create/show it
-            if (!customNotesDiv || customNotesDiv.classList.contains('hidden')) {{
-                if (!customNotesDiv) {{
-                    // Create the element if it doesn't exist
-                    const wrapper = itemCell.querySelector('.item-content-wrapper');
-                    customNotesDiv = document.createElement('div');
-                    customNotesDiv.className = 'custom-notes editable visible';
-                    customNotesDiv.setAttribute('data-item-id', itemId);
-                    customNotesDiv.textContent = '';
-                    wrapper.appendChild(customNotesDiv);
-                }} else {{
-                    // Show existing element
-                    customNotesDiv.classList.remove('hidden');
-                    customNotesDiv.classList.add('visible');
-                }}
-            }}
-            
-            // Don't edit if already editing
-            if (currentEditCell) return;
-            
-            currentEditCell = customNotesDiv;
-            const originalContent = customNotesDiv.innerHTML;
-            
-            // Make it contenteditable
-            customNotesDiv.contentEditable = true;
-            customNotesDiv.classList.add('editing');
-            customNotesDiv.focus();
-            
-            // Select all text if it's not just a nbsp
-            if (customNotesDiv.textContent.trim()) {{
-                const range = document.createRange();
-                range.selectNodeContents(customNotesDiv);
-                const selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }}
-            
-            // Handle save
-            function saveEdit() {{
-                customNotesDiv.contentEditable = false;
-                customNotesDiv.classList.remove('editing');
-                const newValue = customNotesDiv.textContent.trim();
-                
-                if (!newValue) {{
-                    // Remove the element if empty
-                    customNotesDiv.classList.add('hidden');
-                    customNotesDiv.classList.remove('visible');
-                    customNotesDiv.textContent = '';
-                }} else {{
-                    // Keep it visible with the text
-                    customNotesDiv.classList.add('visible');
-                    customNotesDiv.classList.remove('hidden');
-                }}
-                
-                currentEditCell = null;
-                
-                // Send update to Python
-                if (window.pywebchannel && window.bridge) {{
-                    window.bridge.updateField(itemId, 'custom_notes', newValue || '');
-                }}
-            }}
-            
-            // Handle cancel
-            function cancelEdit() {{
-                customNotesDiv.contentEditable = false;
-                customNotesDiv.classList.remove('editing');
-                customNotesDiv.innerHTML = originalContent;
-                
-                // Hide if it was originally empty
-                if (!originalContent || originalContent.trim() === '') {{
-                    customNotesDiv.classList.add('hidden');
-                    customNotesDiv.classList.remove('visible');
-                }}
-                
-                currentEditCell = null;
-            }}
-            
-            // Handle keyboard events
-            function handleKeydown(e) {{
-                if (e.key === 'Enter' && !e.shiftKey) {{
-                    e.preventDefault();
-                    saveEdit();
-                }} else if (e.key === 'Escape') {{
-                    e.preventDefault();
-                    cancelEdit();
-                }}
-            }}
-            
-            // Handle blur event
-            function handleBlur() {{
-                saveEdit();
-                // Clean up event listeners
-                customNotesDiv.removeEventListener('keydown', handleKeydown);
-                customNotesDiv.removeEventListener('blur', handleBlur);
-            }}
-            
-            customNotesDiv.addEventListener('keydown', handleKeydown);
-            customNotesDiv.addEventListener('blur', handleBlur);
-        }}
-        
-        // Handle double-click on time cell for duration editing
-        function handleTimeCellDoubleClick(event, itemId) {{
-            event.stopPropagation();
-            
-            // Find the time range element within this cell
-            const timeCell = event.currentTarget;
-            const timeRangeSpan = timeCell.querySelector('.time-range');
-            
-            if (!timeRangeSpan || currentEditCell) return;
-            
-            currentEditCell = timeRangeSpan;
-            const originalContent = timeRangeSpan.textContent;
-            
-            // Extract the current duration number
-            const durationMatch = originalContent.match(/\((\d+)min\)/);
-            const currentMinutes = durationMatch ? durationMatch[1] : '5';
-            
-            // Make it contenteditable and set just the number
-            timeRangeSpan.contentEditable = true;
-            timeRangeSpan.classList.add('editing');
-            timeRangeSpan.textContent = currentMinutes;
-            timeRangeSpan.focus();
-            
-            // Select all text
-            const range = document.createRange();
-            range.selectNodeContents(timeRangeSpan);
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-            
-            // Handle save
-            function saveEdit() {{
-                timeRangeSpan.contentEditable = false;
-                timeRangeSpan.classList.remove('editing');
-                
-                // Get the new value and validate it's a number
-                let newValue = timeRangeSpan.textContent.trim();
-                const minutes = parseInt(newValue);
-                
-                if (!isNaN(minutes) && minutes > 0) {{
-                    // Send update to Python (which will trigger preview refresh)
-                    if (window.pywebchannel && window.bridge) {{
-                        window.bridge.updateField(itemId, 'duration', minutes.toString());
-                        // Don't update locally - let the refresh handle it
-                        timeRangeSpan.textContent = 'Updating...';
-                    }} else {{
-                        // If no bridge, just update locally
-                        timeRangeSpan.textContent = `(${{minutes}}min)`;
-                    }}
-                }} else {{
-                    // Restore original if invalid
-                    timeRangeSpan.textContent = originalContent;
-                }}
-                
-                currentEditCell = null;
-            }}
-            
-            // Handle cancel
-            function cancelEdit() {{
-                timeRangeSpan.contentEditable = false;
-                timeRangeSpan.classList.remove('editing');
-                timeRangeSpan.textContent = originalContent;
-                currentEditCell = null;
-            }}
-            
-            // Handle keyboard events
-            function handleKeydown(e) {{
-                if (e.key === 'Enter') {{
-                    e.preventDefault();
-                    saveEdit();
-                }} else if (e.key === 'Escape') {{
-                    e.preventDefault();
-                    cancelEdit();
-                }}
-            }}
-            
-            // Handle blur event
-            function handleBlur() {{
-                saveEdit();
-                // Clean up event listeners
-                timeRangeSpan.removeEventListener('keydown', handleKeydown);
-                timeRangeSpan.removeEventListener('blur', handleBlur);
-            }}
-            
-            timeRangeSpan.addEventListener('keydown', handleKeydown);
-            timeRangeSpan.addEventListener('blur', handleBlur);
-        }}
+            notes.classList.remove('hidden');
+            edit(notes, id, 'custom_notes');
+        }};
+        window.handleTimeCellDoubleClick = (e, id) => {{
+            e.stopPropagation();
+            const span = e.currentTarget.querySelector('.time-range');
+            if (span) edit(span, id, 'duration', 
+                t => t.match(/\((\d+)min\)/)?.[1] || '5',
+                v => !isNaN(parseInt(v)) && parseInt(v) > 0
+            );
+        }};
         
         // Initialize Qt WebChannel bridge
         window.addEventListener('load', () => {{

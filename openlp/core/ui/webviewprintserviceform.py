@@ -59,12 +59,20 @@ class WebChannelBridge(QtCore.QObject):
     @QtCore.Slot(str, str, str)
     def updateField(self, item_id, field, value):
         """Called from JavaScript when a field is edited"""
+        print(f"Bridge updateField called: {item_id}, {field}, {value}")
         self.field_updated.emit(item_id, field, value)
     
     @QtCore.Slot(str, str)
     def addSectionHeader(self, after_item_id, header_text):
         """Called from JavaScript to add a section header"""
+        print(f"Bridge addSectionHeader called: {after_item_id}, {header_text}")
         self.section_header_added.emit(after_item_id, header_text)
+    
+    @QtCore.Slot(str, result=str)
+    def testBridge(self, message):
+        """Test method to verify bridge communication"""
+        print(f"Bridge test called with: {message}")
+        return f"Bridge working! Received: {message}"
 
 
 class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
@@ -259,10 +267,12 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         """
         Set up the web channel for JavaScript communication
         """
+        print("Setting up web channel...")
         self.bridge = WebChannelBridge()
         self.channel = QtWebChannel.QWebChannel()
         self.channel.registerObject("bridge", self.bridge)
         self.webview.page().setWebChannel(self.channel)
+        print("Web channel set up complete")
         
         # Connect bridge signals
         self.bridge.field_updated.connect(self.on_field_updated)
@@ -349,12 +359,14 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         """
         Handle field update from JavaScript
         """
+        print(f"Form on_field_updated: {item_id}, {field}, {value}")
         if item_id not in self.custom_data:
             self.custom_data[item_id] = {}
         self.custom_data[item_id][field] = value
         
         # For duration changes, we need to update the preview to recalculate all times
         if field == 'duration':
+            print(f"Duration updated, refreshing preview")
             # Update preview immediately to recalculate all times
             self.update_preview()
         
