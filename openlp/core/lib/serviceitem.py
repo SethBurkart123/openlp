@@ -108,6 +108,7 @@ class ServiceItem(RegistryProperties):
         self.has_original_file_path = True
         self.sha256_file_hash = None
         self.stored_filename = None
+        self.print_service_data = {}
         self._new_item()
         self.metadata = []
 
@@ -431,7 +432,8 @@ class ServiceItem(RegistryProperties):
             'processor': self.processor,
             'metadata': self.metadata,
             'sha256_file_hash': self.sha256_file_hash,
-            'stored_filename': stored_filename
+            'stored_filename': stored_filename,
+            'print_service_data': self.print_service_data
         }
         for file_path, file_hash in self.background_audio:
             if lite_save:
@@ -534,6 +536,7 @@ class ServiceItem(RegistryProperties):
         self.has_original_file_path = True
         self.metadata = header.get('item_meta_data', [])
         self.sha256_file_hash = header.get('sha256_file_hash', None)
+        self.print_service_data = header.get('print_service_data', {})
         self.stored_filename = header.get('stored_filename', None)
         if 'background_audio' in header and State().check_preconditions('media'):
             self.background_audio = []

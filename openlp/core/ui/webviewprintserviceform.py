@@ -102,6 +102,7 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.setup_web_channel()
         self.load_settings()
         self.connect_signals()
+        self.load_existing_metadata()
         self.update_preview()
 
     def setup_ui(self):
@@ -342,6 +343,10 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         if item_id not in self.custom_data:
             self.custom_data[item_id] = {}
         self.custom_data[item_id][field] = value
+        
+        # Save to service item metadata immediately
+        self.save_item_metadata(item_id, field, value)
+        
         if field == 'duration':
             self.update_preview()
         
@@ -357,8 +362,48 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
                 if next_item_id not in self.custom_data:
                     self.custom_data[next_item_id] = {}
                 self.custom_data[next_item_id]['section_header'] = header_text
+                
+                # Save to service item metadata
+                self.save_item_metadata(next_item_id, 'section_header', header_text)
+                
                 self.update_preview()
                 break
+
+    def load_existing_metadata(self):
+        """
+        Load existing print service metadata from service items
+        """
+        self.custom_data = {}
+        for i, item_data in enumerate(self.service_manager.service_items):
+            service_item = item_data['service_item']
+            item_id = f'item-{i}'
+            
+            # Use the dedicated print_service_data field
+            if hasattr(service_item, 'print_service_data') and service_item.print_service_data:
+                self.custom_data[item_id] = service_item.print_service_data.copy()
+
+    def refresh_metadata(self):
+        """
+        Refresh metadata from service items - useful when service changes
+        """
+        self.load_existing_metadata()
+        self.update_preview()
+
+    def save_item_metadata(self, item_id, field, value):
+        """
+        Save custom field data to the corresponding service item
+        """
+        try:
+            item_index = int(item_id.split('-')[1])
+        except (IndexError, ValueError):
+            return
+        
+        if item_index >= len(self.service_manager.service_items):
+            return
+        
+        service_item = self.service_manager.service_items[item_index]['service_item']
+        service_item.print_service_data[field] = value
+        self.service_manager.set_modified(True)
 
     def update_preview(self):
         """
@@ -630,7 +675,12 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         )
         
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            # Clear local and service item data
             self.custom_data.clear()
+            for item_data in self.service_manager.service_items:
+                item_data['service_item'].print_service_data.clear()
+            self.service_manager.set_modified(True)
+            
             self.update_preview()
             self.status_bar.showMessage(translate('OpenLP.WebViewPrintServiceForm', 'Custom data cleared'), 3000)
     
