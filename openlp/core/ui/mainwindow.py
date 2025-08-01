@@ -1553,6 +1553,5 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         """
         Handle the print service menu action by opening the new webview-based print service form
         """
-        from openlp.core.ui.webviewprintserviceform import WebViewPrintServiceForm
-        print_form = WebViewPrintServiceForm()
+        print_form = PrintServiceForm()
         print_form.exec()
