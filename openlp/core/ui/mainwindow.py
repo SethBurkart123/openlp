@@ -185,7 +185,7 @@ class Ui_MainWindow(object):
                                                triggers=self.service_manager_contents.save_file_as)
         self.print_service_order_item = create_action(main_window, 'printServiceItem', can_shortcuts=True,
                                                       category=UiStrings().File,
-                                                      triggers=lambda x: PrintServiceForm().exec())
+                                                      triggers=self.on_print_service_triggered)
         self.file_exit_item = create_action(main_window, 'fileExitItem', icon=UiIcons().exit,
                                             can_shortcuts=True,
                                             category=UiStrings().File, triggers=main_window.close)
@@ -1548,3 +1548,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
             self.service_manager_contents.load_file(file_path)
         else:
             self.log_error(f"File {file_path} not found for arg {args}")
+
+    def on_print_service_triggered(self):
+        """
+        Handle the print service menu action by opening the new webview-based print service form
+        """
+        from openlp.core.ui.webviewprintserviceform import WebViewPrintServiceForm
+        print_form = WebViewPrintServiceForm()
+        print_form.exec()
