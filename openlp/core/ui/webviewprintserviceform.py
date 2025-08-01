@@ -47,32 +47,16 @@ class ServiceTemplate:
 
 
 class WebChannelBridge(QtCore.QObject):
-    """
-    Bridge object for communication between JavaScript and Python
-    """
-    field_updated = QtCore.Signal(str, str, str)  # item_id, field, value
-    section_header_added = QtCore.Signal(str, str)  # after_item_id, header_text
-    
-    def __init__(self):
-        super().__init__()
+    field_updated = QtCore.Signal(str, str, str)
+    section_header_added = QtCore.Signal(str, str)
     
     @QtCore.Slot(str, str, str)
     def updateField(self, item_id, field, value):
-        """Called from JavaScript when a field is edited"""
-        print(f"Bridge updateField called: {item_id}, {field}, {value}")
         self.field_updated.emit(item_id, field, value)
     
     @QtCore.Slot(str, str)
     def addSectionHeader(self, after_item_id, header_text):
-        """Called from JavaScript to add a section header"""
-        print(f"Bridge addSectionHeader called: {after_item_id}, {header_text}")
         self.section_header_added.emit(after_item_id, header_text)
-    
-    @QtCore.Slot(str, result=str)
-    def testBridge(self, message):
-        """Test method to verify bridge communication"""
-        print(f"Bridge test called with: {message}")
-        return f"Bridge working! Received: {message}"
 
 
 class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
@@ -264,83 +248,82 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         layout.addStretch()
 
     def setup_web_channel(self):
-        """
-        Set up the web channel for JavaScript communication
-        """
-        print("Setting up web channel...")
         self.bridge = WebChannelBridge()
         self.channel = QtWebChannel.QWebChannel()
         self.channel.registerObject("bridge", self.bridge)
         self.webview.page().setWebChannel(self.channel)
-        print("Web channel set up complete")
-        
-        # Connect bridge signals
         self.bridge.field_updated.connect(self.on_field_updated)
         self.bridge.section_header_added.connect(self.on_section_header_added)
     
     def connect_signals(self):
-        """
-        Connect UI signals
-        """
-        self.print_action.triggered.connect(self.print_service)
-        self.export_pdf_action.triggered.connect(self.export_pdf)
-        self.clear_action.triggered.connect(self.clear_custom_data)
-        self.template_combo.currentIndexChanged.connect(self.on_template_changed)
-        self.options_button.toggled.connect(self.toggle_options)
+        # Action signals
+        signals = [
+            (self.print_action.triggered, self.print_service),
+            (self.export_pdf_action.triggered, self.export_pdf),
+            (self.clear_action.triggered, self.clear_custom_data),
+            (self.template_combo.currentIndexChanged, self.on_template_changed),
+            (self.options_button.toggled, self.toggle_options),
+        ]
         
-        # Connect all options to update preview
-        self.title_edit.textChanged.connect(self.update_preview)
-        self.date_edit.dateChanged.connect(self.update_preview)
-        self.time_edit.timeChanged.connect(self.update_preview)
-        self.include_times_check.toggled.connect(self.update_preview)
-        self.include_notes_check.toggled.connect(self.update_preview)
-        self.include_slides_check.toggled.connect(self.update_preview)
-        self.include_media_info_check.toggled.connect(self.update_preview)
-        self.footer_edit.textChanged.connect(self.update_preview)
-        self.orientation_combo.currentIndexChanged.connect(self.update_preview)
+        # Preview update signals
+        preview_widgets = [
+            self.title_edit.textChanged, self.date_edit.dateChanged, self.time_edit.timeChanged,
+            self.include_times_check.toggled, self.include_notes_check.toggled,
+            self.include_slides_check.toggled, self.include_media_info_check.toggled,
+            self.footer_edit.textChanged, self.orientation_combo.currentIndexChanged
+        ]
+        
+        for signal, slot in signals:
+            signal.connect(slot)
+        for signal in preview_widgets:
+            signal.connect(self.update_preview)
 
     def load_settings(self):
-        """
-        Load settings from registry
-        """
-        settings = self.settings
-        settings.beginGroup('webview_print_service')
+        s = self.settings
+        s.beginGroup('webview_print_service')
         
-        self.title_edit.setText(settings.value('title'))
+        # Simple widgets
+        widgets = [
+            ('title', self.title_edit, 'setText', 'text'),
+            ('include_times', self.include_times_check, 'setChecked', 'isChecked'),
+            ('include_notes', self.include_notes_check, 'setChecked', 'isChecked'),
+            ('include_slides', self.include_slides_check, 'setChecked', 'isChecked'),
+            ('include_media_info', self.include_media_info_check, 'setChecked', 'isChecked'),
+        ]
         
-        template = settings.value('template')
-        index = self.template_combo.findData(template)
-        if index >= 0:
-            self.template_combo.setCurrentIndex(index)
+        # Combo widgets (need findData)
+        combos = [
+            ('template', self.template_combo),
+            ('orientation', self.orientation_combo),
+        ]
         
-        self.include_times_check.setChecked(settings.value('include_times'))
-        self.include_notes_check.setChecked(settings.value('include_notes'))
-        self.include_slides_check.setChecked(settings.value('include_slides'))
-        self.include_media_info_check.setChecked(settings.value('include_media_info'))
-        
-        orientation = settings.value('orientation')
-        orientation_index = self.orientation_combo.findData(orientation)
-        if orientation_index >= 0:
-            self.orientation_combo.setCurrentIndex(orientation_index)
-        
-        settings.endGroup()
+        for key, widget, setter, _ in widgets:
+            getattr(widget, setter)(s.value(key))
+            
+        for key, combo in combos:
+            idx = combo.findData(s.value(key))
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+                
+        s.endGroup()
 
     def save_settings(self):
-        """
-        Save settings to registry
-        """
-        settings = self.settings
-        settings.beginGroup('webview_print_service')
+        s = self.settings
+        s.beginGroup('webview_print_service')
         
-        settings.setValue('title', self.title_edit.text())
-        settings.setValue('template', self.template_combo.currentData())
-        settings.setValue('include_times', self.include_times_check.isChecked())
-        settings.setValue('include_notes', self.include_notes_check.isChecked())
-        settings.setValue('include_slides', self.include_slides_check.isChecked())
-        settings.setValue('include_media_info', self.include_media_info_check.isChecked())
-        settings.setValue('orientation', self.orientation_combo.currentData())
+        settings_map = {
+            'title': self.title_edit.text(),
+            'template': self.template_combo.currentData(),
+            'include_times': self.include_times_check.isChecked(),
+            'include_notes': self.include_notes_check.isChecked(),
+            'include_slides': self.include_slides_check.isChecked(),
+            'include_media_info': self.include_media_info_check.isChecked(),
+            'orientation': self.orientation_combo.currentData(),
+        }
         
-        settings.endGroup()
+        for key, value in settings_map.items():
+            s.setValue(key, value)
+        s.endGroup()
 
     def on_template_changed(self):
         """
@@ -356,18 +339,10 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.options_widget.setVisible(visible)
     
     def on_field_updated(self, item_id, field, value):
-        """
-        Handle field update from JavaScript
-        """
-        print(f"Form on_field_updated: {item_id}, {field}, {value}")
         if item_id not in self.custom_data:
             self.custom_data[item_id] = {}
         self.custom_data[item_id][field] = value
-        
-        # For duration changes, we need to update the preview to recalculate all times
         if field == 'duration':
-            print(f"Duration updated, refreshing preview")
-            # Update preview immediately to recalculate all times
             self.update_preview()
         
     def on_section_header_added(self, after_item_id, header_text):
@@ -435,33 +410,23 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             item_id = f'item-{i}'
             
             # Calculate duration
-            duration_minutes = 0
-            
-            # Check if there's a custom duration set
             item_custom = self.custom_data.get(item_id, {})
-            print(f"DEBUG: Item custom data: {item_custom}")
-            if 'duration' in item_custom and item_custom['duration']:
-                try:
-                    duration_minutes = int(item_custom['duration'])
-                except (ValueError, TypeError):
-                    duration_minutes = 0
+            try:
+                duration_minutes = int(item_custom.get('duration', 0))
+            except (ValueError, TypeError):
+                duration_minutes = 0
             
-            # If no custom duration, calculate default
-            if duration_minutes == 0:
+            # Calculate default duration if not custom set
+            if not duration_minutes:
                 if service_item.is_media() and service_item.media_length > 0:
-                    if service_item.end_time > 0:
-                        duration_minutes = round((service_item.end_time - service_item.start_time) / 60)
-                    else:
-                        duration_minutes = round(service_item.media_length / 60)
+                    duration_minutes = round((service_item.end_time - service_item.start_time) / 60 
+                                            if service_item.end_time > 0 
+                                            else service_item.media_length / 60)
+                elif service_item.is_text():
+                    duration_minutes = max(1, round(len(service_item.get_frames()) * 0.5))
                 else:
-                    # Estimate duration for non-media items
-                    if service_item.is_text():
-                        slide_count = len(service_item.get_frames())
-                        duration_minutes = max(1, round(slide_count * 0.5))  # 30 seconds per slide
-                    else:
-                        duration_minutes = 2  # Default 2 minutes
+                    duration_minutes = 2
             
-            # Ensure duration is at least 1 minute
             duration_minutes = max(1, duration_minutes)
             
             item_info = {
@@ -508,18 +473,10 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         return slides
 
     def get_template_html(self):
-        """
-        Get the HTML template based on current selection
-        """
-        if self.current_template in [ServiceTemplate.PROFESSIONAL]:
-            return self.get_professional_template()
+        return get_professional_template()
 
     def get_template_css(self):
-        """
-        Get the CSS for the current template
-        """
-        if self.current_template in [ServiceTemplate.PROFESSIONAL]:
-            return self.get_professional_css()
+        return get_professional_css()
 
     def render_service_items(self, service_items):
         """
@@ -684,11 +641,3 @@ class WebViewPrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.save_settings()
         super().closeEvent(event)
 
-    # Template methods using imported templates
-    def get_professional_template(self):
-        """Professional template HTML"""
-        return get_professional_template()
-    
-    def get_professional_css(self):
-        """Professional template CSS"""
-        return get_professional_css()

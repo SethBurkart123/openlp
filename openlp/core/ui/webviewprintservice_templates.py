@@ -245,7 +245,6 @@ body:not(.print-mode) {
     display: flex;
     justify-content: center;
     transform-origin: top center;
-    transition: transform 0.2s ease;
     width: 100%;
 }
 
