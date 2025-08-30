@@ -176,11 +176,7 @@ def get_professional_template():
                     <table class="service-table">
                         <thead>
                             <tr>
-                                <th class="time-col">Time</th>
-                                <th class="item-col">Item</th>
-                                <th class="person-col">Person</th>
-                                <th class="av-col">Audio/Visual</th>
-                                <th class="vocals-col">Vocals</th>
+                                {table_headers}
                             </tr>
                         </thead>
                         <tbody>
@@ -746,19 +742,23 @@ body.landscape .page {
 .text-small { font-size: 8pt; }
 """
 
-def render_professional_items(service_items, include_times=True, include_notes=True, include_slides=False, include_media_info=True, custom_data=None):
+def render_professional_items(service_items, include_times=True, include_notes=True, include_slides=False, include_media_info=True, custom_data=None, columns=None):
     """
-    Render service items in professional table format with interactive editing
+    Render service items in professional table format with dynamic columns
     """
     html_rows = []
-    current_section = None
     custom_data = custom_data or {}
+    
+    # Use default columns if none provided
+    if not columns:
+        from openlp.core.ui.printserviceform import DefaultColumns
+        columns = DefaultColumns.get_default_columns()
     
     # Add opening section if we have items
     if service_items:
-        html_rows.append("""
+        html_rows.append(f"""
         <tr class="section-header" id="header-start">
-            <td colspan="5">Service Commences</td>
+            <td colspan="{len(columns)}">Service Commences</td>
         </tr>
         """)
     
@@ -770,103 +770,139 @@ def render_professional_items(service_items, include_times=True, include_notes=T
         if item_custom.get('section_header'):
             html_rows.append(f"""
             <tr class="section-header custom-header" id="header-{item_id}">
-                <td colspan="5">{item_custom['section_header']}</td>
+                <td colspan="{len(columns)}">{item_custom['section_header']}</td>
             </tr>
             """)
         
         # Determine item type class
         item_type_class = f"item-{item['type']}" if item['type'] in ['songs', 'bibles', 'media', 'presentations', 'custom'] else 'item-custom'
         
-        # Time cell
-        time_content = ""
-        if include_times:
-            time_content = f"""
-            <div class="time-cell">
-                {item['start_time']}
-                <span class="time-range">({item['duration']}min)</span>
-            </div>
-            """
-        
-        # Item content wrapped in scrollable container
-        item_content = '<div class="item-content-wrapper">'
-        item_content += f'<div class="item-title">{item["title"]}</div>'
-        
-        # Map item types to natural names
-        type_mapping = {
-            'songs': 'Song',
-            'bibles': 'Bible Verse',
-            'media': 'Media',
-            'presentations': 'Presentation',
-            'custom': ''  # No subtitle for custom items
-        }
-        
-        # Only add type div if there's a label to show
-        type_label = type_mapping.get(item['type'], item['type'].title())
-        if type_label:
-            item_content += f'<div class="item-type">{type_label}</div>'
-        
-        # Include original notes
-        if include_notes and item['notes']:
-            item_content += f'<div class="item-notes">{item["notes"]}</div>'
-        
-        # Include custom notes (hidden by default when empty)
-        custom_notes = item_custom.get('custom_notes', '')
-        if custom_notes:
-            item_content += f'<div class="custom-notes editable visible" data-item-id="{item_id}">{custom_notes}</div>'
-        else:
-            item_content += f'<div class="custom-notes editable hidden" data-item-id="{item_id}"></div>'
-            
-        if include_media_info and item['media_info']:
-            item_content += f'<div class="media-info">{item["media_info"]}</div>'
-            
-        if include_slides and item['slides']:
-            slides_text = '<br>'.join(item['slides'][:3])  # Show first 3 slides
-            if len(item['slides']) > 3:
-                slides_text += f'<br>... and {len(item["slides"]) - 3} more'
-            item_content += f'<div class="item-slides">{slides_text}</div>'
-        
-        item_content += '</div>'  # Close wrapper
-        
-        # Person assignment (editable but clean)
-        person_content = item_custom.get('person', '') or '&nbsp;'
-        
-        # Audio/Visual info (editable but clean)
-        av_content = item_custom.get('av_notes', '')
-        if not av_content:
-            if item['type'] == 'media':
-                av_content = "Video"
-            elif item['type'] == 'songs':
-                av_content = "Slides"
-            elif item['type'] == 'presentations':
-                av_content = "Presentation"
-            else:
-                av_content = '&nbsp;'
-        
         # Add context menu trigger for section headers
         context_menu_attr = f'oncontextmenu="addSectionHeader(\'{item_id}\'); return false;"'
         
-        # Vocals content (editable but clean)
-        vocals_content = item_custom.get('vocals', '') or '&nbsp;'
+        # Build row cells based on column configuration
+        row_cells = []
+        for column in columns:
+            col_id = column['id']
+            col_type = column['type']
+            col_class = f"{col_id}-col"
+            
+            cell_content = ""
+            cell_attrs = ""
+            
+            if col_id == 'time':
+                # Time column
+                if include_times:
+                    cell_content = f"""
+                    <div class="time-cell">
+                        {item['start_time']}
+                        <span class="time-range">({item['duration']}min)</span>
+                    </div>
+                    """
+                cell_attrs = f'ondblclick="handleTimeCellDoubleClick(event, \'{item_id}\')"'
+                
+            elif col_id == 'item':
+                # Item column - build item content
+                cell_content = '<div class="item-content-wrapper">'
+                cell_content += f'<div class="item-title">{item["title"]}</div>'
+                
+                # Map item types to natural names
+                type_mapping = {
+                    'songs': 'Song',
+                    'bibles': 'Bible Verse',
+                    'media': 'Media',
+                    'presentations': 'Presentation',
+                    'custom': ''  # No subtitle for custom items
+                }
+                
+                # Only add type div if there's a label to show
+                type_label = type_mapping.get(item['type'], item['type'].title())
+                if type_label:
+                    cell_content += f'<div class="item-type">{type_label}</div>'
+                
+                # Include original notes
+                if include_notes and item['notes']:
+                    cell_content += f'<div class="item-notes">{item["notes"]}</div>'
+                
+                # Include custom notes (hidden by default when empty)
+                custom_notes = item_custom.get('custom_notes', '')
+                if custom_notes:
+                    cell_content += f'<div class="custom-notes editable visible" data-item-id="{item_id}">{custom_notes}</div>'
+                else:
+                    cell_content += f'<div class="custom-notes editable hidden" data-item-id="{item_id}"></div>'
+                    
+                if include_media_info and item['media_info']:
+                    cell_content += f'<div class="media-info">{item["media_info"]}</div>'
+                    
+                if include_slides and item['slides']:
+                    slides_text = '<br>'.join(item['slides'][:3])  # Show first 3 slides
+                    if len(item['slides']) > 3:
+                        slides_text += f'<br>... and {len(item["slides"]) - 3} more'
+                    cell_content += f'<div class="item-slides">{slides_text}</div>'
+                
+                cell_content += '</div>'  # Close wrapper
+                cell_attrs = f'ondblclick="handleItemCellDoubleClick(event, \'{item_id}\')"'
+                
+            else:
+                # Custom/editable columns
+                if col_type == 'editable':
+                    # Get content for specific column types
+                    if col_id == 'person':
+                        cell_content = item_custom.get('person', '') or '&nbsp;'
+                    elif col_id == 'av':
+                        cell_content = item_custom.get('av_notes', '')
+                        if not cell_content:
+                            if item['type'] == 'media':
+                                cell_content = "Video"
+                            elif item['type'] == 'songs':
+                                cell_content = "Slides"
+                            elif item['type'] == 'presentations':
+                                cell_content = "Presentation"
+                            else:
+                                cell_content = '&nbsp;'
+                    elif col_id == 'vocals':
+                        cell_content = item_custom.get('vocals', '') or '&nbsp;'
+                    else:
+                        # Generic custom column
+                        cell_content = item_custom.get(col_id, '') or '&nbsp;'
+                    
+                    cell_attrs = f'ondblclick="makeEditable(this, \'{item_id}\', \'{col_id}\')"'
+                    col_class += f" {col_id}-cell editable"
+                else:
+                    # Fixed/display-only columns
+                    cell_content = item_custom.get(col_id, '') or '&nbsp;'
+                    col_class += f" {col_id}-cell"
+            
+            row_cells.append(f'<td class="{col_class}" {cell_attrs}>{cell_content}</td>')
         
         html_rows.append(f"""
         <tr class="{item_type_class}" id="row-{item_id}" {context_menu_attr}>
-            <td class="time-col" ondblclick="handleTimeCellDoubleClick(event, '{item_id}')">{time_content}</td>
-            <td class="item-col" ondblclick="handleItemCellDoubleClick(event, '{item_id}')">{item_content}</td>
-            <td class="person-col person-cell editable" ondblclick="makeEditable(this, '{item_id}', 'person')">{person_content}</td>
-            <td class="av-col av-cell editable" ondblclick="makeEditable(this, '{item_id}', 'av_notes')">{av_content}</td>
-            <td class="vocals-col vocals-cell editable" ondblclick="makeEditable(this, '{item_id}', 'vocals')">{vocals_content}</td>
+            {''.join(row_cells)}
         </tr>
         """)
         
         # Add section breaks for longer services
         if i > 0 and (i + 1) % 8 == 0 and i < len(service_items) - 1:
-            html_rows.append("""
+            html_rows.append(f"""
             <tr class="section-header">
-                <td colspan="5">Intermission</td>
+                <td colspan="{len(columns)}">Intermission</td>
             </tr>
             """)
     
     return '\n'.join(html_rows)
+
+
+def generate_table_headers(columns):
+    """
+    Generate table headers based on column configuration
+    """
+    headers = []
+    for column in columns:
+        col_class = f"{column['id']}-col"
+        headers.append(f'<th class="{col_class}">{column["name"]}</th>')
+    return ''.join(headers)
+
+
 
 def get_footer_section(footer_notes):
     """
