@@ -174,6 +174,7 @@ def get_professional_template():
                 
                 <main class="service-content">
                     <table class="service-table">
+                        {colgroup}
                         <thead>
                             <tr>
                                 {table_headers}
@@ -326,6 +327,8 @@ body.landscape .page {
     margin-bottom: 5px;
     font-size: 8pt;
     flex: 1;
+    /* Fixed layout avoids cumulative rounding overflow on print */
+    table-layout: fixed;
 }
 
 .service-table thead th {
@@ -338,6 +341,12 @@ body.landscape .page {
     text-transform: uppercase;
     font-size: 7pt;
     letter-spacing: 0.3px;
+    /* Allow headers to wrap within tight columns without overflowing */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    hyphens: auto;
+    line-height: 1.1;
 }
 
 .service-table tbody td {
@@ -356,37 +365,20 @@ body.landscape .page {
     padding-right: 0;  /* No scrollbar needed */
 }
 
-===
-===
 
 .service-table tbody tr:nth-child(even) td {
     background-color: #f8f9fa;
 }
 
-===
-===
 
-/* Column Widths */
-.time-col {
-    width: 10%;
-    min-width: 60px;
-}
-
-.item-col {
-    width: 45%;
-}
-
-.person-col {
-    width: 15%;
-}
-
-.av-col {
-    width: 15%;
-}
-
-.vocals-col {
-    width: 15%;
-}
+/* Column sizing
+   Widths are set via a dynamic <colgroup> generated from current columns.
+   Keep only minimum constraints here so added columns don't wrap underneath. */
+.time-col { min-width: 60px; }
+.item-col {}
+.person-col {}
+.av-col {}
+.vocals-col {}
 
 /* Time Styling */
 .time-cell {
@@ -669,10 +661,11 @@ body.landscape .page {
         height: auto;
     }
     
-    .service-table {
-        page-break-inside: auto;
-        width: 100% !important;
-    }
+.service-table {
+    page-break-inside: auto;
+    /* Prevent right-edge clipping from border/pixel rounding in print */
+    width: calc(100% - 2px) !important;
+}
     
     .service-table thead {
         display: table-header-group;
@@ -702,8 +695,6 @@ body.landscape .page {
         page-break-inside: avoid;
         margin-top: auto;
     }
-    
-    /* Hide interactive elements - all removed for final print version */
 }
 
 /* Ensure landscape orientation is properly applied */
@@ -902,6 +893,50 @@ def generate_table_headers(columns):
         headers.append(f'<th class="{col_class}">{column["name"]}</th>')
     return ''.join(headers)
 
+
+def generate_colgroup(columns):
+    """
+    Generate a <colgroup> with widths that adapt to the current columns.
+    Keeps Time at 10% (min 60px) and Item at 45%, distributes remaining
+    space evenly across the other columns so nothing overflows or wraps.
+    """
+    if not columns:
+        return ''
+
+    # Baseline percentages matching the default layout
+    time_pct = 10.0
+    item_pct = 45.0
+
+    # Identify indices of special columns
+    time_idx = next((i for i, c in enumerate(columns) if c.get('id') == 'time'), None)
+    item_idx = next((i for i, c in enumerate(columns) if c.get('id') == 'item'), None)
+
+    # If one of the special columns is missing, re-balance to sensible defaults
+    fixed_total = 0.0
+    if time_idx is not None:
+        fixed_total += time_pct
+    if item_idx is not None:
+        fixed_total += item_pct
+
+    # Compute remaining width
+    remaining = max(0.0, 100.0 - fixed_total)
+    others = [c for c in columns if c.get('id') not in ('time', 'item')]
+    per_other = (remaining / len(others)) if others else remaining
+
+    col_elems = []
+    for col in columns:
+        cid = col.get('id')
+        klass = f"{cid}-col"
+        if cid == 'time' and time_idx is not None:
+            width = time_pct
+        elif cid == 'item' and item_idx is not None:
+            width = item_pct
+        else:
+            width = per_other
+        # Use percentage widths for reliable print layout
+        col_elems.append(f'<col class="{klass}" style="width: {width:.4f}%;">')
+
+    return '<colgroup>' + ''.join(col_elems) + '</colgroup>'
 
 
 def get_footer_section(footer_notes):

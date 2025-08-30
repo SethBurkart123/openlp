@@ -35,8 +35,12 @@ from openlp.core.common.settings import Settings
 from openlp.core.display.webengine import WebEngineView
 from openlp.core.ui.icons import UiIcons
 from openlp.core.ui.printservice_templates import (
-    get_professional_template, get_professional_css, render_professional_items, get_footer_section,
-    generate_table_headers
+    get_professional_template,
+    get_professional_css,
+    render_professional_items,
+    get_footer_section,
+    generate_table_headers,
+    generate_colgroup,
 )
 
 class ServiceTemplate:
@@ -683,6 +687,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         footer_section = get_footer_section(self.footer_edit.toPlainText())
         orientation = self.orientation_combo.currentData()
         table_headers = generate_table_headers(self.columns)
+        colgroup_html = generate_colgroup(self.columns)
         
         html_content = template_html.format(
             title=html.escape(self.title_edit.text()),
@@ -693,7 +698,8 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             footer_notes=html.escape(self.footer_edit.toPlainText()),
             footer_section=footer_section,
             css=css,
-            orientation=orientation
+            orientation=orientation,
+            colgroup=colgroup_html,
         )
         
         return html_content
@@ -946,4 +952,3 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.save_settings()
         self.save_service_metadata()
         super().closeEvent(event)
-
