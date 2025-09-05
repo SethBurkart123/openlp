@@ -54,6 +54,7 @@ class PresentationMediaItem(FolderLibraryItem):
         """
         self.icon_path = 'presentations/presentation'
         self.controllers = controllers
+        self._list_loaded = False
         super(PresentationMediaItem, self).__init__(parent, plugin, Folder, Item)
 
     def retranslate_ui(self):
@@ -90,14 +91,26 @@ class PresentationMediaItem(FolderLibraryItem):
 
     def initialise(self):
         """
-        Populate the media manager tab
+        Populate the media manager tab (lazy list loading)
         """
         self.list_view.clear()
         self.list_view.setIndentation(self.list_view.default_indentation)
         self.list_view.allow_internal_dnd = True
         self.list_view.setIconSize(QtCore.QSize(88, 50))
-        self.load_list(self.manager.get_all_objects(Item, order_by_ref=Item.file_path), is_initial_load=True)
+        # Defer loading the presentation list until focus to speed up startup
+        self._list_loaded = False
+        # Still build controller display types immediately (fast)
         self.populate_display_types()
+
+    def on_focus(self):
+        if not self._list_loaded:
+            log.debug('PresentationMediaItem lazy loading list on focus')
+            try:
+                self.application.set_busy_cursor()
+                self.load_list(self.manager.get_all_objects(Item, order_by_ref=Item.file_path), is_initial_load=True)
+                self._list_loaded = True
+            finally:
+                self.application.set_normal_cursor()
 
     def add_custom_context_actions(self):
         """

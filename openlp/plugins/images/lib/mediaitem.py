@@ -54,6 +54,7 @@ class ImageMediaItem(FolderLibraryItem):
     def __init__(self, parent, plugin):
         self.icon_path = 'images/image'
         self.manager = None
+        self._list_loaded = False
         super(ImageMediaItem, self).__init__(parent, plugin, Folder, Item)
 
     def setup_item(self):
@@ -95,16 +96,26 @@ class ImageMediaItem(FolderLibraryItem):
         self.add_to_service_item = True
 
     def initialise(self):
-        log.debug('initialise')
+        log.debug('initialise (lazy)')
         self.list_view.clear()
         self.list_view.setIconSize(QtCore.QSize(88, 50))
         self.list_view.setIndentation(self.list_view.default_indentation)
         self.list_view.allow_internal_dnd = True
         self.service_path = AppLocation.get_section_data_path(self.settings_section) / 'thumbnails'
         create_paths(self.service_path)
-        # Load images from the database
-        self.load_list(self.manager.get_all_objects(Item, order_by_ref=Item.file_path), is_initial_load=True)
+        # Defer loading the database list and thumbnails until the tab gains focus
+        self._list_loaded = False
 
+    def on_focus(self):
+        if not self._list_loaded:
+            log.debug('ImageMediaItem lazy loading list on focus')
+            try:
+                self.application.set_busy_cursor()
+                self.load_list(self.manager.get_all_objects(Item, order_by_ref=Item.file_path), is_initial_load=True)
+                self._list_loaded = True
+            finally:
+                self.application.set_normal_cursor()
+        
     def add_custom_context_actions(self):
         """
         Add custom actions to the context menu.
