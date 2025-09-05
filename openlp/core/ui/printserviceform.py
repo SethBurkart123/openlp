@@ -35,12 +35,13 @@ from openlp.core.common.settings import Settings
 from openlp.core.display.webengine import WebEngineView
 from openlp.core.ui.icons import UiIcons
 from openlp.core.ui.printservice_templates import (
-    get_professional_template,
-    get_professional_css,
-    render_professional_items,
+    TemplateRegistry,
+    get_base_template,
+    render_table_items,
     get_footer_section,
     generate_table_headers,
     generate_colgroup,
+    get_base_css,
 )
 
 class ServiceTemplate:
@@ -98,7 +99,6 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             'webview_print_service/include_notes': True,
             'webview_print_service/include_slides': False,
             'webview_print_service/include_media_info': True,
-            'webview_print_service/orientation': 'portrait',
             'webview_print_service/columns': DefaultColumns.get_default_columns(),
         }
         Settings.extend_default_settings(default_settings)
@@ -166,7 +166,9 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.toolbar.addWidget(self.template_label)
         
         self.template_combo = QtWidgets.QComboBox()
-        self.template_combo.addItem(translate('OpenLP.PrintServiceForm', 'Professional'), ServiceTemplate.PROFESSIONAL)
+        # Populate from registry
+        for tmpl in TemplateRegistry.all():
+            self.template_combo.addItem(tmpl.label, tmpl.id)
         self.toolbar.addWidget(self.template_combo)
         
         # Options button
@@ -177,19 +179,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.options_button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.options_button.setCheckable(True)
         self.toolbar.addWidget(self.options_button)
-        
 
-        
-        # Orientation toggle
-        self.toolbar.addSeparator()
-        self.orientation_label = QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Orientation:'))
-        self.toolbar.addWidget(self.orientation_label)
-        
-        self.orientation_combo = QtWidgets.QComboBox()
-        self.orientation_combo.addItem(translate('OpenLP.PrintServiceForm', 'Portrait'), 'portrait')
-        self.orientation_combo.addItem(translate('OpenLP.PrintServiceForm', 'Landscape'), 'landscape')
-        self.toolbar.addWidget(self.orientation_combo)
-        
         self.main_layout.addWidget(self.toolbar)
 
         # Splitter for preview and options
@@ -432,7 +422,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             self.title_edit.textChanged, self.date_edit.dateChanged, self.time_edit.timeChanged,
             self.include_times_check.toggled, self.include_notes_check.toggled,
             self.include_slides_check.toggled, self.include_media_info_check.toggled,
-            self.footer_edit.textChanged, self.orientation_combo.currentIndexChanged
+            self.footer_edit.textChanged
         ]
         
         for signal, slot in signals:
@@ -457,7 +447,6 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         # Combo widgets (need findData)
         combos = [
             ('template', self.template_combo),
-            ('orientation', self.orientation_combo),
         ]
         
         for key, widget, setter, _ in widgets:
@@ -489,7 +478,6 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             'include_notes': self.include_notes_check.isChecked(),
             'include_slides': self.include_slides_check.isChecked(),
             'include_media_info': self.include_media_info_check.isChecked(),
-            'orientation': self.orientation_combo.currentData(),
             'columns': self.columns,
         }
         
@@ -605,10 +593,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
                 self.include_slides_check.setChecked(metadata['include_slides'])
             if 'include_media_info' in metadata:
                 self.include_media_info_check.setChecked(metadata['include_media_info'])
-            if 'orientation' in metadata:
-                idx = self.orientation_combo.findData(metadata['orientation'])
-                if idx >= 0:
-                    self.orientation_combo.setCurrentIndex(idx)
+            
             if 'footer_notes' in metadata:
                 self.footer_edit.setPlainText(metadata['footer_notes'])
             if 'columns' in metadata:
@@ -627,7 +612,6 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             'include_notes': self.include_notes_check.isChecked(),
             'include_slides': self.include_slides_check.isChecked(),
             'include_media_info': self.include_media_info_check.isChecked(),
-            'orientation': self.orientation_combo.currentData(),
             'footer_notes': self.footer_edit.toPlainText(),
             'columns': self.columns,
         }
@@ -685,7 +669,6 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         
         # Replace template variables
         footer_section = get_footer_section(self.footer_edit.toPlainText())
-        orientation = self.orientation_combo.currentData()
         table_headers = generate_table_headers(self.columns)
         colgroup_html = generate_colgroup(self.columns)
         
@@ -698,7 +681,6 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             footer_notes=html.escape(self.footer_edit.toPlainText()),
             footer_section=footer_section,
             css=css,
-            orientation=orientation,
             colgroup=colgroup_html,
         )
         
@@ -779,10 +761,15 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         return slides
 
     def get_template_html(self):
-        return get_professional_template()
+        # Use template-provided HTML if present, otherwise the common base
+        tmpl = TemplateRegistry.get(self.current_template)
+        return tmpl.html_template if tmpl and tmpl.html_template else get_base_template()
 
     def get_template_css(self):
-        return get_professional_css()
+        base = get_base_css()
+        tmpl = TemplateRegistry.get(self.current_template)
+        theme_css = tmpl.css if tmpl and tmpl.css else ''
+        return base + "\n" + theme_css
 
     def render_service_items(self, service_items):
         """
@@ -793,8 +780,17 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         include_slides = self.include_slides_check.isChecked()
         include_media_info = self.include_media_info_check.isChecked()
         
-        if self.current_template in [ServiceTemplate.PROFESSIONAL]:
-            return render_professional_items(service_items, include_times, include_notes, include_slides, include_media_info, self.custom_data, self.columns)
+        tmpl = TemplateRegistry.get(self.current_template)
+        renderer = (tmpl.render_items if tmpl and tmpl.render_items else render_table_items)
+        return renderer(
+            service_items,
+            include_times,
+            include_notes,
+            include_slides,
+            include_media_info,
+            self.custom_data,
+            self.columns,
+        )
 
     def print_service(self):
         """
@@ -802,11 +798,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         """
         printer = QtPrintSupport.QPrinter(QtPrintSupport.QPrinter.PrinterMode.HighResolution)
         
-        # Set orientation based on current selection
-        if self.orientation_combo.currentData() == 'landscape':
-            printer.setPageOrientation(QtGui.QPageLayout.Orientation.Landscape)
-        else:
-            printer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
+        printer.setPageOrientation(QtGui.QPageLayout.Orientation.Landscape)
             
         # Set page size to A4
         printer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
@@ -829,10 +821,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             page_layout.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
             page_layout.setMargins(margins)
             
-            if self.orientation_combo.currentData() == 'landscape':
-                page_layout.setOrientation(QtGui.QPageLayout.Orientation.Landscape)
-            else:
-                page_layout.setOrientation(QtGui.QPageLayout.Orientation.Portrait)
+            page_layout.setOrientation(QtGui.QPageLayout.Orientation.Landscape)
             
             def on_pdf_finished():
                 try:
@@ -889,7 +878,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             # Add print mode class to body for CSS
             self.webview.page().runJavaScript("document.body.classList.add('print-mode')")
             
-            # Create page layout with proper orientation
+            # Create page layout (landscape)
             page_layout = QtGui.QPageLayout()
             page_layout.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
             
@@ -897,11 +886,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             margins = QtCore.QMarginsF(20, 15, 20, 5)  # in mm
             page_layout.setMargins(margins)
             
-            # Set orientation based on current selection
-            if self.orientation_combo.currentData() == 'landscape':
-                page_layout.setOrientation(QtGui.QPageLayout.Orientation.Landscape)
-            else:
-                page_layout.setOrientation(QtGui.QPageLayout.Orientation.Portrait)
+            page_layout.setOrientation(QtGui.QPageLayout.Orientation.Landscape)
             
             # Connect to the finished signal to show status
             def on_pdf_finished():

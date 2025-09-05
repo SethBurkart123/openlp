@@ -335,13 +335,24 @@ class DisplayWindow(QtWidgets.QWidget, RegistryProperties, LogMixin):
                             'hideMouse': hide_mouse,
                             'displayTitle': self.window_title
                             })
-        wait_for(lambda: self._is_initialised)
-        if self.scale != 1:
-            self.set_scale(self.scale)
-        if self._can_show_startup_screen:
-            self.set_startup_screen()
-        if self.after_loaded_callback:
-            self.after_loaded_callback()
+        # Defer post-init work until the display reports initialised to avoid blocking startup
+        def _finish_after_init(_=None):
+            try:
+                self.display_watcher.initialised.disconnect(_finish_after_init)
+            except Exception:
+                pass
+            if self.scale != 1:
+                self.set_scale(self.scale)
+            if self._can_show_startup_screen:
+                self.set_startup_screen()
+            if self.after_loaded_callback:
+                self.after_loaded_callback()
+
+        if self._is_initialised:
+            _finish_after_init()
+        else:
+            # Run once when initialisation completes
+            self.display_watcher.initialised.connect(_finish_after_init)
 
     def run_in_display(self, action, *parameters, raw_parameters=None, is_sync=False, return_event_name=None):
         if len(parameters):

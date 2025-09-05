@@ -20,11 +20,62 @@
 ##########################################################################
 """
 Templates for the webview-based print service system
+
+This module provides a lightweight template registry and a common HTML
+shell so adding new "themes" is straightforward. A template supplies:
+ - an identifier and label
+ - a CSS string
+ - an optional item renderer (defaults to the table renderer)
+
+All templates share the same base HTML (scaling, editing and bridge JS),
+and render into a common table-based layout by default. This keeps the
+template-specific work focused on CSS and (optionally) custom columns.
 """
 
-def get_professional_template():
+from typing import Callable, Dict, List, Optional
+
+
+class Template:
+    """A print-service template definition."""
+
+    def __init__(
+        self,
+        template_id: str,
+        label: str,
+        css: str,
+        render_items: Optional[Callable] = None,
+        html_template: Optional[str] = None,
+    ):
+        self.id = template_id
+        self.label = label
+        self.css = css
+        self.render_items = render_items  # Callable or None (use default)
+        self.html_template = html_template  # Optional custom HTML skeleton
+
+
+class TemplateRegistry:
+    """Simple in-module registry of templates."""
+
+    _templates: Dict[str, Template] = {}
+
+    @classmethod
+    def register(cls, template: Template) -> None:
+        cls._templates[template.id] = template
+
+    @classmethod
+    def get(cls, template_id: str) -> Optional[Template]:
+        return cls._templates.get(template_id)
+
+    @classmethod
+    def all(cls) -> List[Template]:
+        # Stable order for UI: sort by label then id
+        return sorted(cls._templates.values(), key=lambda t: (t.label.lower(), t.id))
+
+def get_base_template():
     """
-    Professional service runsheet template matching the user's example
+    Common HTML shell shared by all templates. Injects a `{css}` block for
+    theme styles and provides `{colgroup}`, `{table_headers}`, `{service_items}`
+    placeholders for the default table-based renderer.
     """
     return """<!DOCTYPE html>
 <html>
@@ -163,9 +214,9 @@ def get_professional_template():
         }});
     </script>
 </head>
-<body class="{orientation}">
+<body>
     <div class="scale-container">
-        <div class="paper-container {orientation}">
+        <div class="paper-container">
             <div class="page">
                 <header class="service-header">
                     <h1 class="service-title">{title}</h1>
@@ -254,40 +305,12 @@ body:not(.print-mode) {
     page-break-after: always;
 }
 
-/* Paper container for realistic preview - Portrait */
-body:not(.landscape) .paper-container {
+/* Paper container for realistic preview (Portrait) */
+.paper-container {
     width: 210mm;  /* A4 width portrait */
     min-height: auto;  /* Allow natural content flow */
 }
 
-/* Paper container - Landscape */
-body.landscape .paper-container {
-    width: 297mm;  /* A4 width landscape */
-    min-height: auto;  /* Allow natural content flow */
-}
-
-/* Page content container */
-.page {
-    width: 100%;
-    padding: 1.5cm 2cm 2cm 2cm;  /* Match @page margins, add bottom padding */
-    background: white;
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-    min-height: 100vh;  /* At least viewport height for initial display */
-}
-
-/* Page - Portrait */
-body:not(.landscape) .page {
-    min-height: auto;
-    height: auto;
-}
-
-/* Page - Landscape */
-body.landscape .page {
-    min-height: auto;
-    height: auto;
-}
 
 /* Header Styles */
 .service-header {
@@ -603,12 +626,6 @@ body.landscape .page {
 /* Print-specific styles */
 @media print {
     @page {
-        size: A4;
-        margin: 1.5cm 2cm 0.5cm 2cm;
-    }
-    
-    /* Explicit landscape page setup */
-    @page landscape {
         size: A4 landscape;
         margin: 1.5cm 2cm 0.5cm 2cm;
     }
@@ -625,10 +642,6 @@ body.landscape .page {
         background: white;
         display: block;
         padding: 0 !important;
-    }
-    
-    body.landscape {
-        page: landscape;
     }
     
     .scale-container {
@@ -697,12 +710,7 @@ body.landscape .page {
     }
 }
 
-/* Ensure landscape orientation is properly applied */
-@media print {
-    body.landscape {
-        size: A4 landscape;
-    }
-}
+/* Landscape support removed: always portrait */
 
 /* Screen-specific responsive design */
 @media screen and (max-width: 800px) {
@@ -733,9 +741,319 @@ body.landscape .page {
 .text-small { font-size: 8pt; }
 """
 
-def render_professional_items(service_items, include_times=True, include_notes=True, include_slides=False, include_media_info=True, custom_data=None, columns=None):
+def get_base_css():
     """
-    Render service items in professional table format with dynamic columns
+    Base page CSS shared by all templates.
+    
+    This includes only the essential layout, scaling, print handling, and
+    structural styles that all templates need. Theme-specific colors,
+    typography, and decorative styles should be in the template's own CSS.
+    """
+    return """
+/* Base page styles - shared by all templates */
+@page {
+    size: A4 portrait;
+    margin: 1.5cm 2cm 0.5cm 2cm;
+}
+
+@page :first {
+    margin-top: 1.5cm;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: #e5e5e5;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+
+/* Container for screen preview */
+body:not(.print-mode) {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 20px 0;
+    overflow: auto;
+}
+
+/* Scale container for responsive scaling */
+.scale-container {
+    display: flex;
+    justify-content: center;
+    transform-origin: top center;
+    width: 100%;
+}
+
+/* Paper container base styles */
+.paper-container {
+    background: white;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    margin: 0 auto;
+    position: relative;
+    page-break-after: always;
+    width: 210mm;  /* A4 width portrait */
+    min-height: auto;  /* Allow natural content flow */
+}
+
+/* Page content container */
+.page {
+    width: 100%;
+    padding: 0.5cm;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-height: auto;
+    height: auto;
+}
+
+/* Header structure */
+.service-header {
+    text-align: center;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #ddd;
+    flex-shrink: 0;
+}
+
+/* Service Content structure */
+.service-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Table base structure */
+.service-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 5px;
+    flex: 1;
+    table-layout: fixed; /* Fixed layout avoids cumulative rounding overflow on print */
+}
+
+.service-table thead th {
+    border: 1px solid #dee2e6;
+    padding: 6px 4px;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    hyphens: auto;
+    line-height: 1.1;
+}
+
+.service-table tbody td {
+    border: 1px solid #dee2e6;
+    padding: 4px 4px;
+    vertical-align: top;
+    background-color: white;
+    height: auto;
+    min-height: 20px;
+}
+
+/* Column sizing base constraints */
+.time-col { min-width: 60px; }
+
+/* Item content structure */
+.item-col {
+    position: relative;
+}
+
+.item-content-wrapper {
+    padding-right: 0;
+}
+
+/* Section headers base structure */
+.section-header td {
+    padding: 6px 4px !important;
+    text-align: center;
+    border-top: 1px solid #adb5bd !important;
+}
+
+/* Editable cells base functionality */
+.editable {
+    cursor: pointer;
+    position: relative;
+    min-height: 12px;
+    padding: 2px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.editable.editing {
+    background-color: rgba(0, 123, 255, 0.1);
+    border: 1px solid #007bff;
+    outline: none;
+    border-radius: 2px;
+}
+
+/* Custom notes base structure */
+.custom-notes {
+    margin-top: 2px;
+    padding: 2px;
+    border-radius: 2px;
+    line-height: 1.3;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.custom-notes.hidden {
+    display: none;
+}
+
+.custom-notes.visible {
+    display: block;
+    min-height: 12px;
+}
+
+/* Footer structure */
+.footer-section {
+    margin-top: auto;
+    margin-bottom: 0;
+    padding: 5px 0 0 0;
+    border-top: 1px solid #dee2e6;
+    flex-shrink: 0;
+}
+
+/* Time editing base structure */
+.time-range.editing {
+    background-color: rgba(0, 123, 255, 0.1);
+    border: 1px solid #007bff;
+    outline: none;
+    border-radius: 2px;
+    padding: 1px 3px;
+    min-width: 20px;
+    display: inline-block;
+}
+
+/* Print-specific styles */
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 1.5cm 2cm 0.5cm 2cm;
+    }
+    
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+    }
+    
+    body {
+        background: white;
+        display: block;
+        padding: 0 !important;
+    }
+    
+    .scale-container {
+        transform: none !important;
+        height: auto !important;
+        display: block !important;
+        width: 100% !important;
+    }
+    
+    .paper-container {
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        page-break-after: always;
+    }
+    
+    .page {
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        display: block !important;
+    }
+    
+    .service-content {
+        width: 100%;
+        height: auto;
+    }
+    
+    .service-table {
+        page-break-inside: auto;
+        width: calc(100% - 2px) !important; /* Prevent right-edge clipping from border/pixel rounding in print */
+    }
+    
+    .service-table thead {
+        display: table-header-group;
+    }
+    
+    .service-table tbody tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+    
+    .service-table tbody td {
+        overflow: visible !important;
+    }
+    
+    .item-content-wrapper {
+        overflow: visible !important;
+    }
+    
+    .section-header {
+        page-break-after: avoid;
+        page-break-inside: avoid;
+    }
+    
+    .footer-section {
+        page-break-inside: avoid;
+        margin-top: auto;
+    }
+}
+
+/* Screen-specific responsive design */
+@media screen and (max-width: 800px) {
+    body {
+        padding: 10px;
+    }
+    
+    .scale-container {
+        transform: none !important;
+    }
+    
+    .paper-container {
+        width: calc(100vw - 20px);
+        min-height: auto;
+        box-shadow: none;
+    }
+}
+
+/* Utility classes */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.font-bold { font-weight: 600; }
+.text-muted { color: #6c757d; }
+.text-small { font-size: 8pt; }
+"""
+
+def render_table_items(
+    service_items,
+    include_times=True,
+    include_notes=True,
+    include_slides=False,
+    include_media_info=True,
+    custom_data=None,
+    columns=None,
+):
+    """
+    Default table-based item renderer used by most templates.
     """
     html_rows = []
     custom_data = custom_data or {}
@@ -952,3 +1270,18 @@ def get_footer_section(footer_notes):
         <div class="footer-notes">{footer_notes.replace(chr(10), '<br>')}</div>
     </footer>
     """
+
+
+# --- Load built-in templates from subpackage -------------------------------
+
+# Importing the package auto-registers all bundled templates
+try:
+    import openlp.core.ui.print_templates  # noqa: F401
+except Exception:
+    # Fail gracefully if import-time issues occur; the UI can still run,
+    # but no templates will be available until this is fixed.
+    pass
+
+# Backwards-compatible aliases (in case of older imports)
+get_professional_template = get_base_template
+render_professional_items = render_table_items
