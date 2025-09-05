@@ -166,6 +166,7 @@ def get_base_template():
                 if (validate(val)) {{
                     window.bridge?.updateField(id, field, val);
                     if (field === 'custom_notes' && !val) el.classList.add('hidden');
+                    if (field === 'section_header' && !val) el.closest('tr')?.remove();
                 }} else el.innerHTML = editing.original;
             }};
             
@@ -173,6 +174,7 @@ def get_base_template():
                 el.contentEditable = false;
                 el.classList.remove('editing');
                 el.innerHTML = editing.original;
+                if (field === 'section_header' && !el.textContent.trim()) el.closest('tr')?.remove();
                 editing = null;
             }};
             
@@ -181,7 +183,27 @@ def get_base_template():
         }}
         
         window.makeEditable = (el, id, field) => edit(el, id, field);
-        window.addSectionHeader = id => window.bridge?.addSectionHeader(id, prompt('Header:'));
+        window.handleHeaderDoubleClick = (e, id) => {{
+            e.stopPropagation();
+            edit(e.currentTarget, id, 'section_header');
+        }};
+        // Add a header inline and enter edit mode where it will be saved on blur/Enter
+        window.interactiveAddHeader = (id) => {{
+            try {{ window.setInsertMode(false); }} catch (e) {{}}
+            const targetRow = document.getElementById('row-' + id);
+            if (!targetRow) return;
+            const colCount = document.querySelectorAll('thead th').length || 1;
+            const tr = document.createElement('tr');
+            tr.className = 'section-header custom-header';
+            const td = document.createElement('td');
+            td.className = 'header-cell editable';
+            td.setAttribute('colspan', String(colCount));
+            td.setAttribute('ondblclick', `handleHeaderDoubleClick(event, '${{id}}')`);
+            td.textContent = '';
+            tr.appendChild(td);
+            targetRow.parentNode.insertBefore(tr, targetRow);
+            edit(td, id, 'section_header');
+        }};
         window.handleItemCellDoubleClick = (e, id) => {{
             e.stopPropagation();
             let notes = e.currentTarget.querySelector('.custom-notes');
@@ -204,6 +226,45 @@ def get_base_template():
             );
         }};
         
+        // Insert-mode UI for adding headers between rows
+        function clearInsertSlots() {{
+            document.querySelectorAll('tr.insert-slot').forEach(tr => tr.remove());
+        }}
+
+        function buildInsertSlots() {{
+            clearInsertSlots();
+            const tbody = document.querySelector('tbody');
+            if (!tbody) return;
+            const colCount = document.querySelectorAll('thead th').length || 1;
+            const rows = Array.from(tbody.querySelectorAll('tr[id^="row-"]'));
+            const makeSlot = (targetId) => {{
+                const tr = document.createElement('tr');
+                tr.className = 'insert-slot';
+                const td = document.createElement('td');
+                td.setAttribute('colspan', String(colCount));
+                td.innerHTML = '<div class="insert-line"><span class="insert-label">Click to add section header here</span></div>';
+                td.onclick = () => window.interactiveAddHeader(targetId);
+                tr.appendChild(td);
+                return tr;
+            }};
+
+            if (rows.length) {{
+                // Slot before first row
+                const firstId = rows[0].id.replace('row-', '');
+                tbody.insertBefore(makeSlot(firstId), rows[0]);
+
+                // Slots between each pair of rows
+                for (let i = 0; i < rows.length - 1; i++) {{
+                    const nextId = rows[i + 1].id.replace('row-', '');
+                    tbody.insertBefore(makeSlot(nextId), rows[i + 1]);
+                }}
+            }}
+        }}
+
+        window.setInsertMode = (enabled) => {{
+            if (enabled) buildInsertSlots(); else clearInsertSlots();
+        }};
+
         // Initialize Qt WebChannel bridge
         window.addEventListener('load', () => {{
             if (typeof QWebChannel !== 'undefined') {{
@@ -569,12 +630,6 @@ body:not(.print-mode) {
     background-color: white;
     height: auto;
     min-height: 20px;
-}
-
-/* Custom section headers */
-.custom-header {
-    background-color: #d1ecf1 !important;
-    color: #0c5460;
 }
 
 /* Footer */
@@ -1041,6 +1096,30 @@ body:not(.print-mode) {
 .font-bold { font-weight: 600; }
 .text-muted { color: #6c757d; }
 .text-small { font-size: 8pt; }
+
+/* Insert header slots in preview */
+tr.insert-slot td {
+    padding: 2px 0 !important;
+    background: #eef7ff;
+}
+.insert-line {
+    border-top: 2px dashed #5aa9ff;
+    position: relative;
+    height: 0;
+}
+.insert-label {
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #eef7ff;
+    color: #1d86ff;
+    font-size: 7pt;
+    padding: 0 4px;
+}
+tr.insert-slot:hover .insert-line {
+    border-color: #1d86ff;
+}
 """
 
 def render_table_items(
@@ -1063,14 +1142,6 @@ def render_table_items(
         from openlp.core.ui.printserviceform import DefaultColumns
         columns = DefaultColumns.get_default_columns()
     
-    # Add opening section if we have items
-    if service_items:
-        html_rows.append(f"""
-        <tr class="section-header" id="header-start">
-            <td colspan="{len(columns)}">Service Commences</td>
-        </tr>
-        """)
-    
     for i, item in enumerate(service_items):
         item_id = item.get('id', f'item-{i}')
         item_custom = custom_data.get(item_id, {})
@@ -1079,15 +1150,15 @@ def render_table_items(
         if item_custom.get('section_header'):
             html_rows.append(f"""
             <tr class="section-header custom-header" id="header-{item_id}">
-                <td colspan="{len(columns)}">{item_custom['section_header']}</td>
+                <td class="header-cell editable" colspan="{len(columns)}" ondblclick="handleHeaderDoubleClick(event, '{item_id}')">{item_custom['section_header']}</td>
             </tr>
             """)
         
         # Determine item type class
         item_type_class = f"item-{item['type']}" if item['type'] in ['songs', 'bibles', 'media', 'presentations', 'custom'] else 'item-custom'
         
-        # Add context menu trigger for section headers
-        context_menu_attr = f'oncontextmenu="addSectionHeader(\'{item_id}\'); return false;"'
+        # Add context menu trigger for section headers (inline add + edit)
+        context_menu_attr = f'oncontextmenu="interactiveAddHeader(\'{item_id}\'); return false;"'
         
         # Build row cells based on column configuration
         row_cells = []
@@ -1189,14 +1260,6 @@ def render_table_items(
             {''.join(row_cells)}
         </tr>
         """)
-        
-        # Add section breaks for longer services
-        if i > 0 and (i + 1) % 8 == 0 and i < len(service_items) - 1:
-            html_rows.append(f"""
-            <tr class="section-header">
-                <td colspan="{len(columns)}">Intermission</td>
-            </tr>
-            """)
     
     return '\n'.join(html_rows)
 
@@ -1282,6 +1345,3 @@ except Exception:
     # but no templates will be available until this is fixed.
     pass
 
-# Backwards-compatible aliases (in case of older imports)
-get_professional_template = get_base_template
-render_professional_items = render_table_items

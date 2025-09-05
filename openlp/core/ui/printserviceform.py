@@ -180,6 +180,12 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.options_button.setCheckable(True)
         self.toolbar.addWidget(self.options_button)
 
+        # Insert header mode
+        self.toolbar.addSeparator()
+        self.insert_header_action = self.toolbar.addAction(UiIcons().add,
+                                                           translate('OpenLP.PrintServiceForm', 'Insert Header'))
+        self.insert_header_action.setCheckable(True)
+
         self.main_layout.addWidget(self.toolbar)
 
         # Splitter for preview and options
@@ -257,6 +263,16 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         options_layout.addWidget(self.include_media_info_check)
         
         layout.addWidget(options_group)
+
+        # Hint for adding section headers via the preview
+        self.hint_label = QtWidgets.QLabel(
+            translate('OpenLP.PrintServiceForm', 'Tip: Right-click any row in the preview to add a section header before it.'))
+        self.hint_label.setWordWrap(True)
+        font = self.hint_label.font()
+        font.setPointSize(max(font.pointSize() - 1, 7))
+        self.hint_label.setFont(font)
+        self.hint_label.setStyleSheet('color: #666;')
+        layout.addWidget(self.hint_label)
         
         # Columns management
         columns_group = QtWidgets.QGroupBox(translate('OpenLP.PrintServiceForm', 'Columns'))
@@ -415,6 +431,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             (self.clear_action.triggered, self.clear_custom_data),
             (self.template_combo.currentIndexChanged, self.on_template_changed),
             (self.options_button.toggled, self.toggle_options),
+            (self.insert_header_action.toggled, self.toggle_insert_mode),
         ]
         
         # Preview update signals
@@ -501,31 +518,57 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
     def on_field_updated(self, item_id, field, value):
         if item_id not in self.custom_data:
             self.custom_data[item_id] = {}
-        self.custom_data[item_id][field] = value
+        if field == 'section_header' and (value is None or str(value).strip() == ''):
+            # Remove header when text cleared
+            if 'section_header' in self.custom_data[item_id]:
+                del self.custom_data[item_id]['section_header']
+            # Also clear in metadata
+            self.save_item_metadata(item_id, 'section_header', '')
+        else:
+            self.custom_data[item_id][field] = value
         
         # Save to service item metadata immediately
         self.save_item_metadata(item_id, field, value)
         
-        if field == 'duration':
+        if field in ('duration', 'section_header'):
             self.update_preview()
+            if field == 'section_header':
+                # Exit insert mode in the toolbar if it was enabled
+                try:
+                    self.insert_header_action.setChecked(False)
+                except Exception:
+                    pass
+
+    def toggle_insert_mode(self, enabled):
+        # Toggle interactive insertion slots in the webview
+        js = f"setInsertMode({str(bool(enabled)).lower()})"
+        try:
+            self.webview.page().runJavaScript(js)
+        except Exception:
+            pass
         
     def on_section_header_added(self, after_item_id, header_text):
         """
         Handle section header addition
         """
-        # Find the item after which to add the header
+        # Insert the header BEFORE the clicked item (supports top-of-list)
         service_items = self.extract_service_data()
         for i, item in enumerate(service_items):
-            if item.get('id', f'item-{i}') == after_item_id and i + 1 < len(service_items):
-                next_item_id = service_items[i + 1].get('id', f'item-{i + 1}')
-                if next_item_id not in self.custom_data:
-                    self.custom_data[next_item_id] = {}
-                self.custom_data[next_item_id]['section_header'] = header_text
-                
+            current_id = item.get('id', f'item-{i}')
+            if current_id == after_item_id:
+                if current_id not in self.custom_data:
+                    self.custom_data[current_id] = {}
+                self.custom_data[current_id]['section_header'] = header_text
+
                 # Save to service item metadata
-                self.save_item_metadata(next_item_id, 'section_header', header_text)
-                
+                self.save_item_metadata(current_id, 'section_header', header_text)
+
                 self.update_preview()
+                # Exit insert mode after adding via picker
+                try:
+                    self.insert_header_action.setChecked(False)
+                except Exception:
+                    pass
                 break
 
     def load_existing_metadata(self):
@@ -564,7 +607,12 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             return
         
         service_item = self.service_manager.service_items[item_index]['service_item']
-        service_item.print_service_data[field] = value
+        # Remove header key when cleared, otherwise set value
+        if field == 'section_header' and (value is None or str(value).strip() == ''):
+            if 'section_header' in service_item.print_service_data:
+                del service_item.print_service_data['section_header']
+        else:
+            service_item.print_service_data[field] = value
         self.service_manager.set_modified(True)
 
     def load_service_metadata(self):
