@@ -91,11 +91,6 @@ class PresentationPlugin(Plugin):
             self.manager.save_object(item)
         self.settings.remove('presentations/presentations files')
         super().initialise()
-        # Defer starting external controllers until after UI is up to speed up startup
-        Registry().register_function('bootstrap_completion', self._start_controllers_deferred)
-        self.media_item.build_file_mask_string()
-
-    def _start_controllers_deferred(self):
         for controller in self.controllers:
             if self.controllers[controller].enabled():
                 try:
@@ -103,6 +98,7 @@ class PresentationPlugin(Plugin):
                 except Exception:
                     log.exception('Failed to start controller process')
                     self.controllers[controller].available = False
+        self.media_item.build_file_mask_string()
 
     def finalise(self):
         """
