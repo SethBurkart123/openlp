@@ -472,6 +472,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
     """
     The main window.
     """
+    # Thread-safe signals for UI operations
+    show_error_message = QtCore.Signal(str, str)
+    show_warning_message = QtCore.Signal(str, str)
+    show_information_message = QtCore.Signal(str, str)
+    
     def __init__(self):
         """
         This constructor sets up the interface, the various managers, and the plugins.
@@ -517,6 +522,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         self.mode_default_item.triggered.connect(self.on_mode_default_item_clicked)
         self.mode_setup_item.triggered.connect(self.on_mode_setup_item_clicked)
         self.mode_live_item.triggered.connect(self.on_mode_live_item_clicked)
+        # Thread-safe UI message signals
+        self.show_error_message.connect(self._show_error_message_slot)
+        self.show_warning_message.connect(self._show_warning_message_slot)
+        self.show_information_message.connect(self._show_information_message_slot)
         # Media Manager
         self.media_tool_box.currentChanged.connect(self.on_media_tool_box_changed)
         self.application.set_busy_cursor()
@@ -765,9 +774,15 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         :param title: The title of the warning box.
         :param message: The message to be displayed.
         """
-        if hasattr(self.application, 'splash'):
-            self.application.splash.close()
-        QtWidgets.QMessageBox.critical(self, title, message)
+        # Check if we're on the main thread
+        if QtCore.QThread.currentThread() == QtWidgets.QApplication.instance().thread():
+            # We're on the main thread, show dialog directly
+            if hasattr(self.application, 'splash'):
+                self.application.splash.close()
+            QtWidgets.QMessageBox.critical(self, title, message)
+        else:
+            # We're on a background thread, use signal to show dialog on main thread
+            self.show_error_message.emit(title, message)
 
     def warning_message(self, title: str, message: str):
         """
@@ -776,9 +791,15 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         :param title:  The title of the warning box.
         :param message: The message to be displayed.
         """
-        if hasattr(self.application, 'splash'):
-            self.application.splash.close()
-        QtWidgets.QMessageBox.warning(self, title, message)
+        # Check if we're on the main thread
+        if QtCore.QThread.currentThread() == QtWidgets.QApplication.instance().thread():
+            # We're on the main thread, show dialog directly
+            if hasattr(self.application, 'splash'):
+                self.application.splash.close()
+            QtWidgets.QMessageBox.warning(self, title, message)
+        else:
+            # We're on a background thread, use signal to show dialog on main thread
+            self.show_warning_message.emit(title, message)
 
     def information_message(self, title: str, message: str):
         """
@@ -786,6 +807,39 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
 
         :param title: The title of the warning box.
         :param message: The message to be displayed.
+        """
+        # Check if we're on the main thread
+        if QtCore.QThread.currentThread() == QtWidgets.QApplication.instance().thread():
+            # We're on the main thread, show dialog directly
+            if hasattr(self.application, 'splash'):
+                self.application.splash.close()
+            QtWidgets.QMessageBox.information(self, title, message)
+        else:
+            # We're on a background thread, use signal to show dialog on main thread
+            self.show_information_message.emit(title, message)
+
+    @QtCore.Slot(str, str)
+    def _show_error_message_slot(self, title: str, message: str):
+        """
+        Slot to show error message on main thread
+        """
+        if hasattr(self.application, 'splash'):
+            self.application.splash.close()
+        QtWidgets.QMessageBox.critical(self, title, message)
+
+    @QtCore.Slot(str, str)
+    def _show_warning_message_slot(self, title: str, message: str):
+        """
+        Slot to show warning message on main thread
+        """
+        if hasattr(self.application, 'splash'):
+            self.application.splash.close()
+        QtWidgets.QMessageBox.warning(self, title, message)
+
+    @QtCore.Slot(str, str)
+    def _show_information_message_slot(self, title: str, message: str):
+        """
+        Slot to show information message on main thread
         """
         if hasattr(self.application, 'splash'):
             self.application.splash.close()

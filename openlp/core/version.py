@@ -158,20 +158,38 @@ def get_version():
     file_path = AppLocation.get_directory(AppLocation.VersionDir) / '.version'
     try:
         full_version = file_path.read_text().rstrip()
+        # Handle corrupted version files with multiple versions concatenated
+        if full_version.count('v') > 1 or full_version.count('.dev') > 1:
+            # Extract the first valid-looking version
+            import re
+            version_match = re.search(r'v?(\d+\.\d+\.\d+(?:\.dev\d*)?(?:\+[a-f0-9]+)?)', full_version)
+            if version_match:
+                full_version = version_match.group(1)
+            else:
+                full_version = '0.0.0'
     except OSError:
         log.exception('Error in version file.')
         full_version = '0.0.0'
 
-    if '.dev' in full_version:
-        # Old way of doing build numbers, but also how hatch does them
-        version_number, build_number = full_version.split('.dev', 1)
-        build_number = build_number.split('+', 1)[1]
-    elif '+' in full_version:
-        # Current way of doing build numbers, may be replaced by hatch later
-        version_number, build_number = full_version.split('+', 1)
-    else:
-        # If this is a release, there is no build number
-        version_number = full_version
+    try:
+        if '.dev' in full_version:
+            # Old way of doing build numbers, but also how hatch does them
+            version_number, build_number = full_version.split('.dev', 1)
+            if '+' in build_number:
+                build_number = build_number.split('+', 1)[1]
+            else:
+                # If there's no '+', the build_number is everything after '.dev'
+                pass
+        elif '+' in full_version:
+            # Current way of doing build numbers, may be replaced by hatch later
+            version_number, build_number = full_version.split('+', 1)
+        else:
+            # If this is a release, there is no build number
+            version_number = full_version
+            build_number = None
+    except (ValueError, IndexError) as e:
+        log.exception('Error parsing version string "%s": %s', full_version, e)
+        version_number = '0.0.0'
         build_number = None
 
     APPLICATION_VERSION = {
