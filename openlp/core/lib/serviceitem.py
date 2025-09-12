@@ -575,8 +575,9 @@ class ServiceItem(RegistryProperties):
                         if text_image['image']:
                             thumbnail = AppLocation.get_data_path() / text_image['image']
                             # copy thumbnail from servicemanager path
-                            if thumbnail.exists():
-                                copy(path / 'thumbnails' / os.path.basename(text_image['image']),
+                            source_thumbnail = path / 'thumbnails' / os.path.basename(text_image['image'])
+                            if source_thumbnail.exists():
+                                copy(source_thumbnail,
                                      AppLocation.get_section_data_path(self.name) / 'thumbnails')
                     else:
                         text = text_image

@@ -20,7 +20,7 @@
 ##########################################################################
 import logging
 
-from flask import jsonify, request, abort, Blueprint
+from flask import jsonify, request, abort, Blueprint, Response, send_from_directory
 from PySide6 import QtCore
 
 from openlp.core.api.lib import login_required
@@ -112,3 +112,16 @@ def main_image():
         live_controller, 'grab_maindisplay', QtCore.Qt.ConnectionType.DirectConnection, QtCore.Q_RETURN_ARG(str))
     img = 'data:image/jpeg;base64,{}'.format(img_data)
     return jsonify({'binary_image': img})
+
+
+@core.route('/live-image/raw')
+def main_image_raw():
+    live_controller = Registry().get('live_controller')
+    service_item = live_controller.service_item
+    if not service_item or not service_item.is_image():
+        abort(404)
+    selected_row = live_controller.selected_row or 0
+    image_path = service_item.get_frame_path(selected_row)
+    if not image_path or not image_path.exists():
+        abort(404)
+    return send_from_directory(str(image_path.parent), image_path.name)
