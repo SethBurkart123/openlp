@@ -124,6 +124,9 @@ class AdvancedTab(SettingsTab):
         self.hidpi_mode_layout.addWidget(self.hidpi_mode_label)
         self.hidpi_mode_layout.addWidget(self.hidpi_mode_combobox)
         self.hidpi_mode_widget.setLayout(self.hidpi_mode_layout)
+        self.bypass_backup_check_box = QtWidgets.QCheckBox(self.misc_workaround_group_box)
+        self.bypass_backup_check_box.setObjectName('bypass_backup_check_box')
+        self.misc_workaround_layout.addWidget(self.bypass_backup_check_box)
         self.misc_workaround_layout.addWidget(self.hidpi_mode_widget)
         self.left_layout.addWidget(self.misc_workaround_group_box)
         # Proxies
@@ -171,6 +174,7 @@ class AdvancedTab(SettingsTab):
         self.prefer_windowed_capture_check_box.setText(
             translate('OpenLP.AdvancedTab', 'Prefer window capture instead of screen capture'))
         self.misc_workaround_group_box.setTitle(translate('OpenLP.AdvancedTab', 'Miscellaneous Workarounds'))
+        self.bypass_backup_check_box.setText(translate('OpenLP.AdvancedTab', 'Skip backup when version changes'))
         self.hidpi_mode_label.setText(translate('OpenLP.AdvancedTab', 'HiDPI Mode:'))
         self.hidpi_mode_combobox.setItemText(0, translate('OpenLP.AdvancedTab', 'Default'))
         self.hidpi_mode_combobox.setItemText(1, translate('OpenLP.AdvancedTab', 'Legacy'))
@@ -200,6 +204,7 @@ class AdvancedTab(SettingsTab):
             self.data_directory_new_label.hide()
             self.data_directory_path_edit.hide()
         self.data_directory_protect_check_box.setChecked(self.settings.value('advanced/protect data directory'))
+        self.bypass_backup_check_box.setChecked(self.settings.value('advanced/bypass_backup_on_version_change'))
         self.hidpi_mode_combobox.setCurrentIndex(self.settings.value('advanced/hidpi mode'))
 
     def save(self):
@@ -216,6 +221,7 @@ class AdvancedTab(SettingsTab):
             self.settings_form.register_post_process('config_screen_changed')
         self.settings.setValue('advanced/alternate rows', self.alternate_rows_check_box.isChecked())
         self.settings.setValue('advanced/protect data directory', self.data_directory_protect_check_box.isChecked())
+        self.settings.setValue('advanced/bypass_backup_on_version_change', self.bypass_backup_check_box.isChecked())
         self.settings.setValue('advanced/hidpi mode', self.hidpi_mode_combobox.currentIndex())
         self.proxy_widget.save()
 

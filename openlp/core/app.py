@@ -226,6 +226,10 @@ class OpenLP(QtCore.QObject, LogMixin):
         """
         data_version = self.settings.value('core/application version')
         openlp_version = get_version()['version']
+
+        # Check if user has enabled bypass backup on version change
+        bypass_backup = self.settings.value('advanced/bypass_backup_on_version_change')
+
         # New installation, no need to create backup
         if not has_run_wizard:
             self.settings.setValue('core/application version', openlp_version)
@@ -347,7 +351,11 @@ def backup_if_version_changed(settings):
     :param Settings settings: The settings object
     :rtype: bool
     """
+    # Check if user has enabled bypass backup on version change
+    bypass_backup = settings.value('advanced/bypass_backup_on_version_change')
+
     is_downgrade = get_version()['version'] < settings.value('core/application version')
+    is_downgrade = not bypass_backup and is_downgrade
     # No need to backup if version matches and we're not downgrading
     if not (settings.version_mismatched() and settings.value('core/has run wizard')) and not is_downgrade:
         return True

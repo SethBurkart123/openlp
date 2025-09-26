@@ -162,10 +162,18 @@ class PresentationDocument(object):
         if self._sha256_file_hash:
             path = self._sha256_file_hash
         else:
-            self._sha256_file_hash = sha256_file_hash(self.file_path)
-            # If the sha256_file_hash() function encounters an error, it will return None, so use the
-            # filename as the temp folder if the result is None (or falsey).
-            path = self._sha256_file_hash or self.file_path.name
+            try:
+                self._sha256_file_hash = sha256_file_hash(self.file_path)
+            except (PermissionError, OSError) as e:
+                log.warning('Failed to generate file hash for {file_path}: {error}. Using filename as fallback.'.format(
+                    file_path=self.file_path, error=str(e)))
+                # Use filename as fallback when hash generation fails
+                self._sha256_file_hash = None
+                path = self.file_path.name
+            else:
+                # If the sha256_file_hash() function encounters an error, it will return None, so use the
+                # filename as the temp folder if the result is None (or falsey).
+                path = self._sha256_file_hash or self.file_path.name
         return Path(root_folder, path)
 
     def check_thumbnails(self):
