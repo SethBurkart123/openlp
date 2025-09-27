@@ -31,56 +31,78 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install system dependencies
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
       run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          sudo apt-get update
-          sudo apt-get install -y \
-            libdbus-1-dev \
-            libdbus-glib-1-dev \
-            libenchant-2-2 \
-            libenchant-2-dev \
-            libicu-dev \
-            pkg-config
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          brew install \
-            enchant \
-            dbus \
-            dbus-glib \
-            icu4c \
-            pkg-config
-          # Set up ICU environment for macOS
-          ICU_PREFIX=$(brew --prefix icu4c)
-          echo "PKG_CONFIG_PATH=${ICU_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "PATH=${ICU_PREFIX}/bin:$PATH" >> $GITHUB_ENV
-          echo "LDFLAGS=-L${ICU_PREFIX}/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I${ICU_PREFIX}/include" >> $GITHUB_ENV
-        elif [ "$RUNNER_OS" == "Windows" ]; then
-          # Windows doesn't need dbus-python (Linux-only) but needs ICU for PyICU
-          echo "Installing Windows system dependencies..."
-          
-          # Install ICU via chocolatey
-          choco install -y icu
-          
-          # Try to find ICU installation and set environment variables
-          # Common ICU installation paths on Windows
-          for ICU_PATH in "/c/tools/icu" "/c/Program Files/ICU" "/c/Program Files (x86)/ICU"; do
-            if [ -d "$ICU_PATH" ]; then
-              echo "Found ICU at $ICU_PATH"
-              echo "ICU_ROOT=$ICU_PATH" >> $GITHUB_ENV
-              echo "ICU_VERSION=73.2" >> $GITHUB_ENV
-              echo "PATH=$ICU_PATH/bin:$PATH" >> $GITHUB_ENV
-              break
-            fi
-          done
-          
-          # If ICU still not found, try to use pre-built wheels approach
-          if [ ! -d "/c/tools/icu" ] && [ ! -d "/c/Program Files/ICU" ]; then
-            echo "ICU not found, will try alternative PyICU installation"
-            echo "PYICU_USE_BINARY=1" >> $GITHUB_ENV
-          fi
-        fi
+        sudo apt-get update
+        sudo apt-get install -y \
+          libdbus-1-dev \
+          libdbus-glib-1-dev \
+          libenchant-2-2 \
+          libenchant-2-dev \
+          libicu-dev \
+          pkg-config
       shell: bash
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install \
+          enchant \
+          dbus \
+          dbus-glib \
+          icu4c \
+          pkg-config
+        # Set up ICU environment for macOS
+        ICU_PREFIX=$(brew --prefix icu4c)
+        echo "PKG_CONFIG_PATH=${ICU_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "PATH=${ICU_PREFIX}/bin:$PATH" >> $GITHUB_ENV
+        echo "LDFLAGS=-L${ICU_PREFIX}/lib" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I${ICU_PREFIX}/include" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Install system dependencies (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Write-Host 'Installing Windows system dependencies...'
+        $icuVersion = '73.2'
+        $icuUrl = "https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-Win64-MSVC2019.zip"
+        $icuArchive = Join-Path $env:RUNNER_TEMP 'icu4c.zip'
+        $icuExtractRoot = Join-Path $env:RUNNER_TEMP 'icu'
+
+        if (Test-Path $icuArchive) {
+          Remove-Item $icuArchive -Force
+        }
+        if (Test-Path $icuExtractRoot) {
+          Remove-Item $icuExtractRoot -Recurse -Force
+        }
+
+        Write-Host "Downloading ICU binaries from $icuUrl"
+        Invoke-WebRequest -Uri $icuUrl -OutFile $icuArchive
+        Expand-Archive -Path $icuArchive -DestinationPath $icuExtractRoot -Force
+
+        $icuRoot = Join-Path $icuExtractRoot 'icu'
+        if (-not (Test-Path $icuRoot)) {
+          throw "ICU root not found after extraction at $icuRoot"
+        }
+
+        Write-Host "ICU extracted to $icuRoot"
+        Add-Content -Path $env:GITHUB_ENV -Value "ICU_ROOT=$icuRoot"
+        Add-Content -Path $env:GITHUB_ENV -Value "ICU_VERSION=$icuVersion"
+        Add-Content -Path $env:GITHUB_ENV -Value "PATH=$icuRoot\bin;$env:PATH"
+        if ($env:INCLUDE) {
+          Add-Content -Path $env:GITHUB_ENV -Value "INCLUDE=$env:INCLUDE;$icuRoot\include"
+        } else {
+          Add-Content -Path $env:GITHUB_ENV -Value "INCLUDE=$icuRoot\include"
+        }
+        if ($env:LIB) {
+          Add-Content -Path $env:GITHUB_ENV -Value "LIB=$env:LIB;$icuRoot\lib"
+        } else {
+          Add-Content -Path $env:GITHUB_ENV -Value "LIB=$icuRoot\lib"
+        }
+        Add-Content -Path $env:GITHUB_ENV -Value "PYICU_USE_BINARY=1"
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3
