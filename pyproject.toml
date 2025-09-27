@@ -78,11 +78,6 @@ dependencies = [
     "pyinstaller",
     "dmgbuild",
     "yt-dlp",
-    "pytest>=8.4.0",
-    "pytest-qt>=4.4.0",
-    "flake8>=7.2.0",
-    "pyodbc>=5.2.0",
-    "pysword>=0.2.8",
 ]
 
 [project.optional-dependencies]
@@ -93,11 +88,11 @@ postgresql = ["psycopg2_binary"]
 spellcheck = ["pyenchant >= 1.6"]
 sword-bibles = ["pysword"]
 test = [
-    "pyodbc",
-    "pysword", 
-    "pytest",
-    "pytest-qt",
-    "flake8"
+    "pytest>=8.4.0",
+    "pytest-qt>=4.4.0",
+    "flake8>=7.2.0",
+    "pyodbc>=5.2.0",
+    "pysword>=0.2.8"
 ]
 
 [project.urls]
