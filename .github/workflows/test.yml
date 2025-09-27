@@ -140,33 +140,32 @@ jobs:
       if: runner.os != 'Windows'
       run: |
         uv run pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
-        # Create header and append content
-        cat > openlp/core/resources.py << 'EOF'
-# -*- coding: utf-8 -*-
-
-##########################################################################
-# OpenLP - Open Source Lyrics Projection                                 #
-# ---------------------------------------------------------------------- #
-# Copyright (c) 2008-2024 OpenLP Developers                              #
-# ---------------------------------------------------------------------- #
-# This program is free software: you can redistribute it and/or modify   #
-# it under the terms of the GNU General Public License as published by   #
-# the Free Software Foundation, either version 3 of the License, or      #
-# (at your option) any later version.                                    #
-#                                                                        #
-# This program is distributed in the hope that it will be useful,        #
-# but WITHOUT ANY WARRANTY; without even the implied warranty of         #
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
-# GNU General Public License for more details.                           #
-#                                                                        #
-# You should have received a copy of the GNU General Public License      #
-# along with this program.  If not, see <https://www.gnu.org/licenses/>. #
-##########################################################################
-"""
-The :mod:`resources` module provides application images and icons in a central
-store for use by OpenLP.
-"""
-EOF
+        # Create header file using echo commands (same as Windows approach)
+        echo '# -*- coding: utf-8 -*-' > openlp/core/resources.py
+        echo '' >> openlp/core/resources.py
+        echo '##########################################################################' >> openlp/core/resources.py
+        echo '# OpenLP - Open Source Lyrics Projection                                 #' >> openlp/core/resources.py
+        echo '# ---------------------------------------------------------------------- #' >> openlp/core/resources.py
+        echo '# Copyright (c) 2008-2024 OpenLP Developers                              #' >> openlp/core/resources.py
+        echo '# ---------------------------------------------------------------------- #' >> openlp/core/resources.py
+        echo '# This program is free software: you can redistribute it and/or modify   #' >> openlp/core/resources.py
+        echo '# it under the terms of the GNU General Public License as published by   #' >> openlp/core/resources.py
+        echo '# the Free Software Foundation, either version 3 of the License, or      #' >> openlp/core/resources.py
+        echo '# (at your option) any later version.                                    #' >> openlp/core/resources.py
+        echo '#                                                                        #' >> openlp/core/resources.py
+        echo '# This program is distributed in the hope that it will be useful,        #' >> openlp/core/resources.py
+        echo '# but WITHOUT ANY WARRANTY; without even the implied warranty of         #' >> openlp/core/resources.py
+        echo '# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #' >> openlp/core/resources.py
+        echo '# GNU General Public License for more details.                           #' >> openlp/core/resources.py
+        echo '#                                                                        #' >> openlp/core/resources.py
+        echo '# You should have received a copy of the GNU General Public License      #' >> openlp/core/resources.py
+        echo '# along with this program.  If not, see <https://www.gnu.org/licenses/>. #' >> openlp/core/resources.py
+        echo '##########################################################################' >> openlp/core/resources.py
+        echo '"""' >> openlp/core/resources.py
+        echo 'The :mod:`resources` module provides application images and icons in a central' >> openlp/core/resources.py
+        echo 'store for use by OpenLP.' >> openlp/core/resources.py
+        echo '"""' >> openlp/core/resources.py
+        # Append content from line 6 onwards
         tail -n +6 openlp/core/resources.py.new >> openlp/core/resources.py
         rm -f openlp/core/resources.py.new
       shell: bash
