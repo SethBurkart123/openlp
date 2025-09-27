@@ -56,9 +56,29 @@ jobs:
           echo "LDFLAGS=-L${ICU_PREFIX}/lib" >> $GITHUB_ENV
           echo "CPPFLAGS=-I${ICU_PREFIX}/include" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "Windows" ]; then
-          # Windows doesn't need dbus-python (Linux-only) but may need other deps
+          # Windows doesn't need dbus-python (Linux-only) but needs ICU for PyICU
           echo "Installing Windows system dependencies..."
-          # ICU is typically available on Windows runners, but we might need to set paths
+          
+          # Install ICU via chocolatey
+          choco install -y icu
+          
+          # Try to find ICU installation and set environment variables
+          # Common ICU installation paths on Windows
+          for ICU_PATH in "/c/tools/icu" "/c/Program Files/ICU" "/c/Program Files (x86)/ICU"; do
+            if [ -d "$ICU_PATH" ]; then
+              echo "Found ICU at $ICU_PATH"
+              echo "ICU_ROOT=$ICU_PATH" >> $GITHUB_ENV
+              echo "ICU_VERSION=73.2" >> $GITHUB_ENV
+              echo "PATH=$ICU_PATH/bin:$PATH" >> $GITHUB_ENV
+              break
+            fi
+          done
+          
+          # If ICU still not found, try to use pre-built wheels approach
+          if [ ! -d "/c/tools/icu" ] && [ ! -d "/c/Program Files/ICU" ]; then
+            echo "ICU not found, will try alternative PyICU installation"
+            echo "PYICU_USE_BINARY=1" >> $GITHUB_ENV
+          fi
         fi
       shell: bash
 
@@ -67,13 +87,29 @@ jobs:
       with:
         version: "latest"
 
-    - name: Sync dependencies
+    - name: Install Python dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Use the same approach as build.yml for Windows - install dependencies manually
+        python -m pip install --upgrade pip
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako packaging platformdirs PySide6 QtAwesome qrcode requests SQLAlchemy waitress websockets macholib pyinstaller fastmcp
+        # Install test-specific dependencies
+        pip install pytest pytest-qt flake8 pyodbc pysword
+        # Try to install PyICU from wheel, fallback to source if needed
+        pip install --only-binary=PyICU PyICU || pip install PyICU
+
+    - name: Sync dependencies (Non-Windows)
+      if: runner.os != 'Windows'
       run: uv sync --extra test
 
     - name: Generate resources
       run: |
         # Generate the Qt resources file that contains icons and images
-        uv run pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        else
+          uv run pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        fi
         # Add proper header and remove first 5 lines (comments)
         if [ "$RUNNER_OS" == "Windows" ]; then
           # Windows PowerShell version
@@ -117,4 +153,10 @@ jobs:
       shell: bash
 
     - name: Run tests
-      run: uv run python -m pytest tests/ -v --tb=short
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          python -m pytest tests/ -v --tb=short
+        else
+          uv run python -m pytest tests/ -v --tb=short
+        fi
+      shell: bash
