@@ -35,12 +35,30 @@ jobs:
       run: |
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev libdbus-glib-1-dev libenchant-2-2 libenchant-2-dev
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libdbus-glib-1-dev \
+            libenchant-2-2 \
+            libenchant-2-dev \
+            libicu-dev \
+            pkg-config
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          brew install enchant dbus dbus-glib
+          brew install \
+            enchant \
+            dbus \
+            dbus-glib \
+            icu4c \
+            pkg-config
+          # Set up ICU environment for macOS
+          ICU_PREFIX=$(brew --prefix icu4c)
+          echo "PKG_CONFIG_PATH=${ICU_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "PATH=${ICU_PREFIX}/bin:$PATH" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${ICU_PREFIX}/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${ICU_PREFIX}/include" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "Windows" ]; then
-          # Windows doesn't need dbus-python, it's Linux-only
-          echo "No additional system dependencies needed for Windows"
+          # Windows doesn't need dbus-python (Linux-only) but may need other deps
+          echo "Installing Windows system dependencies..."
+          # ICU is typically available on Windows runners, but we might need to set paths
         fi
       shell: bash
 
