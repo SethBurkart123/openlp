@@ -17,7 +17,6 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12"]
         exclude:
-          # Exclude some combinations to reduce CI load
           - os: macos-latest
             python-version: "3.10"
           - os: windows-latest
@@ -32,6 +31,19 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Install system dependencies
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libdbus-glib-1-dev libenchant-2-2 libenchant-2-dev
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          brew install enchant dbus dbus-glib
+        elif [ "$RUNNER_OS" == "Windows" ]; then
+          # Windows doesn't need dbus-python, it's Linux-only
+          echo "No additional system dependencies needed for Windows"
+        fi
+      shell: bash
+
     - name: Install uv
       uses: astral-sh/setup-uv@v3
       with:
@@ -39,6 +51,52 @@ jobs:
 
     - name: Sync dependencies
       run: uv sync --extra test
+
+    - name: Generate resources
+      run: |
+        # Generate the Qt resources file that contains icons and images
+        uv run pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Add proper header and remove first 5 lines (comments)
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          # Windows PowerShell version
+          powershell -Command "
+            \$header = '# -*- coding: utf-8 -*-`n`n##########################################################################`n# OpenLP - Open Source Lyrics Projection                                 #`n# ---------------------------------------------------------------------- #`n# Copyright (c) 2008-2024 OpenLP Developers                              #`n# ---------------------------------------------------------------------- #`n# This program is free software: you can redistribute it and/or modify   #`n# it under the terms of the GNU General Public License as published by   #`n# the Free Software Foundation, either version 3 of the License, or      #`n# (at your option) any later version.                                    #`n#                                                                        #`n# This program is distributed in the hope that it will be useful,        #`n# but WITHOUT ANY WARRANTY; without even the implied warranty of         #`n# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #`n# GNU General Public License for more details.                           #`n#                                                                        #`n# You should have received a copy of the GNU General Public License      #`n# along with this program.  If not, see <https://www.gnu.org/licenses/>. #`n##########################################################################`n\`"\`"`nThe :mod:\`\`resources\`\` module provides application images and icons in a central`nstore for use by OpenLP.`n\`"\`"`n';
+            \$content = Get-Content openlp/core/resources.py.new | Select-Object -Skip 5;
+            \$header + (\$content -join \"`n\") | Out-File openlp/core/resources.py -Encoding utf8;
+            Remove-Item openlp/core/resources.py.new
+          "
+        else
+          # Unix version
+          cat > openlp/core/resources.py << 'EOF'
+        # -*- coding: utf-8 -*-
+
+        ##########################################################################
+        # OpenLP - Open Source Lyrics Projection                                 #
+        # ---------------------------------------------------------------------- #
+        # Copyright (c) 2008-2024 OpenLP Developers                              #
+        # ---------------------------------------------------------------------- #
+        # This program is free software: you can redistribute it and/or modify   #
+        # it under the terms of the GNU General Public License as published by   #
+        # the Free Software Foundation, either version 3 of the License, or      #
+        # (at your option) any later version.                                    #
+        #                                                                        #
+        # This program is distributed in the hope that it will be useful,        #
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
+        # GNU General Public License for more details.                           #
+        #                                                                        #
+        # You should have received a copy of the GNU General Public License      #
+        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
+        ##########################################################################
+        """
+        The :mod:`resources` module provides application images and icons in a central
+        store for use by OpenLP.
+        """
+        EOF
+          tail -n +6 openlp/core/resources.py.new >> openlp/core/resources.py
+          rm -f openlp/core/resources.py.new
+        fi
+      shell: bash
 
     - name: Run tests
       run: uv run python -m pytest tests/ -v --tb=short
