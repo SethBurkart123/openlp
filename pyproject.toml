@@ -77,7 +77,12 @@ dependencies = [
     "macholib",
     "pyinstaller",
     "dmgbuild",
-    "yt-dlp"
+    "yt-dlp",
+    "pytest>=8.4.0",
+    "pytest-qt>=4.4.0",
+    "flake8>=7.2.0",
+    "pyodbc>=5.2.0",
+    "pysword>=0.2.8",
 ]
 
 [project.optional-dependencies]
@@ -97,6 +102,9 @@ test = [
 
 [project.urls]
 Homepage = "https://openlp.org/"
+
+[project.scripts]
+test = "openlp.__main__:run_tests"
 
 [project.gui-scripts]
 openlp = "openlp.__main__:start"

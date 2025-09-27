@@ -75,5 +75,30 @@ def start():
     main()
 
 
+def run_tests():
+    """
+    Run the test suite.
+    """
+    import subprocess
+    import sys
+
+    # Run pytest with the test dependencies
+    cmd = [
+        sys.executable, "-m", "pytest",
+        "-v", "tests/",
+        "--tb=short"
+    ]
+
+    try:
+        result = subprocess.run(cmd)
+        sys.exit(result.returncode)
+    except KeyboardInterrupt:
+        print("\nTest run interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error running tests: {e}")
+        sys.exit(1)
+
+
 if __name__ == '__main__':
     start()                 # pragma: nocover
