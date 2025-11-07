@@ -218,6 +218,91 @@ jobs:
         path: dist/OpenLP-*.dmg
         if-no-files-found: warn
 
+  build-macos-intel:
+    runs-on: macos-15-intel
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install system dependencies
+      run: |
+        # Install enchant library
+        brew install enchant
+        # Export the library path that the builder expects (Intel Macs use /usr/local)
+        echo "PYENCHANT_LIBRARY_PATH=/usr/local/lib/libenchant-2.2.dylib" >> $GITHUB_ENV
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 PyInstaller macholib dmgbuild fastmcp
+    
+    - name: Generate resources
+      run: |
+        # Generate the Qt resources file that contains icons and images
+        pyside6-rcc -g python -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Remove the first 5 lines (comments)
+        tail -n +6 openlp/core/resources.py.new > openlp/core/resources.py.tmp
+        # Add the proper header and apply patches
+        cat > openlp/core/resources.py << 'EOF'
+        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
+
+        ##########################################################################
+        # OpenLP - Open Source Lyrics Projection                                 #
+        # ---------------------------------------------------------------------- #
+        # Copyright (c) 2008-2024 OpenLP Developers                              #
+        # ---------------------------------------------------------------------- #
+        # This program is free software: you can redistribute it and/or modify   #
+        # it under the terms of the GNU General Public License as published by   #
+        # the Free Software Foundation, either version 3 of the License, or      #
+        # (at your option) any later version.                                    #
+        #                                                                        #
+        # This program is distributed in the hope that it will be useful,        #
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
+        # GNU General Public License for more details.                           #
+        #                                                                        #
+        # You should have received a copy of the GNU General Public License      #
+        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
+        ##########################################################################
+        """
+        The :mod:`resources` module provides application images and icons in a central
+        store for use by OpenLP.
+        """
+        EOF
+        cat openlp/core/resources.py.tmp >> openlp/core/resources.py
+        # Clean up temporary files
+        rm -f openlp/core/resources.py.new openlp/core/resources.py.tmp
+    
+    - name: Create macOS config
+      run: |
+        cd packaging/macos
+        if [ ! -f "config.ini" ]; then
+          cp "config.ini.default" "config.ini"
+        fi
+    
+    - name: Build macOS app
+      run: |
+        cd packaging/builders
+        python macos-builder.py --config ../macos/config.ini --skip-update
+      env:
+        PYTHONPATH: packaging/builders
+        PYENCHANT_LIBRARY_PATH: /usr/local/lib/libenchant-2.2.dylib
+    
+    - name: Upload macOS Intel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-intel-dmg
+        path: dist/OpenLP-*.dmg
+        if-no-files-found: warn
+
   build-linux:
     runs-on: ubuntu-latest
     
@@ -313,7 +398,7 @@ jobs:
 
   # Optional: Create a release if this is a tag push
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-macos-intel, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     
@@ -327,6 +412,7 @@ jobs:
         files: |
           windows-x64-installer/*
           macos-dmg/*
+          macos-intel-dmg/*
           linux-flatpak/*
         draft: true
         prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
