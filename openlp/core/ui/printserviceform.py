@@ -100,6 +100,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             'webview_print_service/include_slides': False,
             'webview_print_service/include_media_info': True,
             'webview_print_service/columns': DefaultColumns.get_default_columns(),
+            'webview_print_service/orientation': 'landscape',
         }
         Settings.extend_default_settings(default_settings)
     
@@ -242,6 +243,14 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         self.time_edit = QtWidgets.QTimeEdit()
         self.time_edit.setTime(QtCore.QTime(10, 0))
         layout.addWidget(self.time_edit)
+        
+        # Page orientation
+        layout.addWidget(QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Page Orientation:')))
+        self.orientation_combo = QtWidgets.QComboBox()
+        self.orientation_combo.addItem(translate('OpenLP.PrintServiceForm', 'Portrait'), 'portrait')
+        self.orientation_combo.addItem(translate('OpenLP.PrintServiceForm', 'Landscape'), 'landscape')
+        self.orientation_combo.setCurrentIndex(1)  # Default to landscape
+        layout.addWidget(self.orientation_combo)
         
         # Options group
         options_group = QtWidgets.QGroupBox(translate('OpenLP.PrintServiceForm', 'Include'))
@@ -437,6 +446,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         # Preview update signals
         preview_widgets = [
             self.title_edit.textChanged, self.date_edit.dateChanged, self.time_edit.timeChanged,
+            self.orientation_combo.currentIndexChanged,
             self.include_times_check.toggled, self.include_notes_check.toggled,
             self.include_slides_check.toggled, self.include_media_info_check.toggled,
             self.footer_edit.textChanged
@@ -464,6 +474,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         # Combo widgets (need findData)
         combos = [
             ('template', self.template_combo),
+            ('orientation', self.orientation_combo),
         ]
         
         for key, widget, setter, _ in widgets:
@@ -491,6 +502,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         settings_map = {
             'title': self.title_edit.text(),
             'template': self.template_combo.currentData(),
+            'orientation': self.orientation_combo.currentData(),
             'include_times': self.include_times_check.isChecked(),
             'include_notes': self.include_notes_check.isChecked(),
             'include_slides': self.include_slides_check.isChecked(),
@@ -633,6 +645,10 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
                 time = QtCore.QTime.fromString(metadata['time'], QtCore.Qt.DateFormat.ISODate)
                 if time.isValid():
                     self.time_edit.setTime(time)
+            if 'orientation' in metadata:
+                idx = self.orientation_combo.findData(metadata['orientation'])
+                if idx >= 0:
+                    self.orientation_combo.setCurrentIndex(idx)
             if 'include_times' in metadata:
                 self.include_times_check.setChecked(metadata['include_times'])
             if 'include_notes' in metadata:
@@ -656,6 +672,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             'title': self.title_edit.text(),
             'date': self.date_edit.date().toString(QtCore.Qt.DateFormat.ISODate),
             'time': self.time_edit.time().toString(QtCore.Qt.DateFormat.ISODate),
+            'orientation': self.orientation_combo.currentData(),
             'include_times': self.include_times_check.isChecked(),
             'include_notes': self.include_notes_check.isChecked(),
             'include_slides': self.include_slides_check.isChecked(),
@@ -720,6 +737,10 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         table_headers = generate_table_headers(self.columns)
         colgroup_html = generate_colgroup(self.columns)
         
+        # Get orientation and generate dynamic CSS override
+        orientation_str = self.orientation_combo.currentData()
+        orientation_css = self.get_orientation_css(orientation_str)
+        
         html_content = template_html.format(
             title=html.escape(self.title_edit.text()),
             date=self.date_edit.date().toString('dddd, MMMM dd, yyyy'),
@@ -728,7 +749,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             service_items=self.render_service_items(service_data),
             footer_notes=html.escape(self.footer_edit.toPlainText()),
             footer_section=footer_section,
-            css=css,
+            css=css + '\n' + orientation_css,
             colgroup=colgroup_html,
         )
         
@@ -818,6 +839,45 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         tmpl = TemplateRegistry.get(self.current_template)
         theme_css = tmpl.css if tmpl and tmpl.css else ''
         return base + "\n" + theme_css
+    
+    def get_orientation_css(self, orientation):
+        """
+        Generate CSS that overrides the @page orientation rules
+        """
+        if orientation == 'portrait':
+            return """
+/* Portrait orientation override */
+@page {
+    size: A4 portrait !important;
+}
+
+@media print {
+    @page {
+        size: A4 portrait !important;
+    }
+}
+
+.paper-container {
+    width: 210mm !important;  /* A4 width portrait */
+}
+"""
+        else:  # landscape
+            return """
+/* Landscape orientation override */
+@page {
+    size: A4 landscape !important;
+}
+
+@media print {
+    @page {
+        size: A4 landscape !important;
+    }
+}
+
+.paper-container {
+    width: 297mm !important;  /* A4 width landscape */
+}
+"""
 
     def render_service_items(self, service_items):
         """
@@ -846,7 +906,12 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
         """
         printer = QtPrintSupport.QPrinter(QtPrintSupport.QPrinter.PrinterMode.HighResolution)
         
-        printer.setPageOrientation(QtGui.QPageLayout.Orientation.Landscape)
+        # Get selected orientation
+        orientation_str = self.orientation_combo.currentData()
+        orientation = (QtGui.QPageLayout.Orientation.Portrait if orientation_str == 'portrait' 
+                      else QtGui.QPageLayout.Orientation.Landscape)
+        
+        printer.setPageOrientation(orientation)
             
         # Set page size to A4
         printer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
@@ -869,7 +934,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             page_layout.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
             page_layout.setMargins(margins)
             
-            page_layout.setOrientation(QtGui.QPageLayout.Orientation.Landscape)
+            page_layout.setOrientation(orientation)
             
             def on_pdf_finished():
                 try:
@@ -926,7 +991,12 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             # Add print mode class to body for CSS
             self.webview.page().runJavaScript("document.body.classList.add('print-mode')")
             
-            # Create page layout (landscape)
+            # Get selected orientation
+            orientation_str = self.orientation_combo.currentData()
+            orientation = (QtGui.QPageLayout.Orientation.Portrait if orientation_str == 'portrait' 
+                          else QtGui.QPageLayout.Orientation.Landscape)
+            
+            # Create page layout with selected orientation
             page_layout = QtGui.QPageLayout()
             page_layout.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
             
@@ -934,7 +1004,7 @@ class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
             margins = QtCore.QMarginsF(20, 15, 20, 5)  # in mm
             page_layout.setMargins(margins)
             
-            page_layout.setOrientation(QtGui.QPageLayout.Orientation.Landscape)
+            page_layout.setOrientation(orientation)
             
             # Connect to the finished signal to show status
             def on_pdf_finished():

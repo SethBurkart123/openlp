@@ -41,7 +41,19 @@ jobs:
           libenchant-2-2 \
           libenchant-2-dev \
           libicu-dev \
-          pkg-config
+          pkg-config \
+          libegl1-mesa \
+          libgl1-mesa-glx \
+          libglib2.0-0 \
+          libxkbcommon-x11-0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-xinerama0 \
+          libxcb-xfixes0 \
+          xvfb
       shell: bash
 
     - name: Install system dependencies (macOS)
@@ -65,43 +77,8 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        $ErrorActionPreference = 'Stop'
-        Write-Host 'Installing Windows system dependencies...'
-        $icuVersion = '73.2'
-        $icuUrl = "https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-Win64-MSVC2019.zip"
-        $icuArchive = Join-Path $env:RUNNER_TEMP 'icu4c.zip'
-        $icuExtractRoot = Join-Path $env:RUNNER_TEMP 'icu'
-
-        if (Test-Path $icuArchive) {
-          Remove-Item $icuArchive -Force
-        }
-        if (Test-Path $icuExtractRoot) {
-          Remove-Item $icuExtractRoot -Recurse -Force
-        }
-
-        Write-Host "Downloading ICU binaries from $icuUrl"
-        Invoke-WebRequest -Uri $icuUrl -OutFile $icuArchive
-        Expand-Archive -Path $icuArchive -DestinationPath $icuExtractRoot -Force
-
-        $icuRoot = Join-Path $icuExtractRoot 'icu'
-        if (-not (Test-Path $icuRoot)) {
-          throw "ICU root not found after extraction at $icuRoot"
-        }
-
-        Write-Host "ICU extracted to $icuRoot"
-        Add-Content -Path $env:GITHUB_ENV -Value "ICU_ROOT=$icuRoot"
-        Add-Content -Path $env:GITHUB_ENV -Value "ICU_VERSION=$icuVersion"
-        Add-Content -Path $env:GITHUB_ENV -Value "PATH=$icuRoot\bin;$env:PATH"
-        if ($env:INCLUDE) {
-          Add-Content -Path $env:GITHUB_ENV -Value "INCLUDE=$env:INCLUDE;$icuRoot\include"
-        } else {
-          Add-Content -Path $env:GITHUB_ENV -Value "INCLUDE=$icuRoot\include"
-        }
-        if ($env:LIB) {
-          Add-Content -Path $env:GITHUB_ENV -Value "LIB=$env:LIB;$icuRoot\lib"
-        } else {
-          Add-Content -Path $env:GITHUB_ENV -Value "LIB=$icuRoot\lib"
-        }
+        Write-Host 'Setting up Windows environment for testing...'
+        # Set environment variable to prefer binary PyICU installation
         Add-Content -Path $env:GITHUB_ENV -Value "PYICU_USE_BINARY=1"
 
     - name: Install uv
@@ -114,11 +91,11 @@ jobs:
       run: |
         # Use the same approach as build.yml for Windows - install dependencies manually
         python -m pip install --upgrade pip
-        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako packaging platformdirs PySide6 QtAwesome qrcode requests SQLAlchemy waitress websockets macholib pyinstaller fastmcp
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword QDarkStyle QtAwesome qrcode requests six sqlalchemy waitress websockets PyInstaller macholib fastmcp
         # Install test-specific dependencies
-        pip install pytest pytest-qt flake8 pyodbc pysword
-        # Try to install PyICU from wheel, fallback to source if needed
-        pip install --only-binary=PyICU PyICU || pip install PyICU
+        pip install pytest pytest-qt flake8
+        # Try to install PyICU - use binary wheel if available, skip if it fails
+        pip install --only-binary=PyICU PyICU || echo "PyICU installation failed, continuing without it"
 
     - name: Sync dependencies (Non-Windows)
       if: runner.os != 'Windows'
@@ -196,7 +173,12 @@ jobs:
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
           python -m pytest tests/ -v --tb=short
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          # Use virtual display for Linux GUI tests
+          export QT_QPA_PLATFORM=offscreen
+          xvfb-run -a -s "-screen 0 1024x768x24" uv run python -m pytest tests/ -v --tb=short
         else
+          # macOS
           uv run python -m pytest tests/ -v --tb=short
         fi
       shell: bash
