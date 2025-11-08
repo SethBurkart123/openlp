@@ -332,7 +332,7 @@ class Builder(object):
         """
         self._print('Running PyInstaller...')
         os.chdir(self.work_path)
-        cmd = ['pyinstaller'
+        cmd = ['pyinstaller',
                '--clean',
                '--noconfirm',
                '--windowed',
@@ -342,6 +342,10 @@ class Builder(object):
                # Import to make sqlalchemy work.
                # Can't be in the custom hook folder because it will conflict with PyInstallers hook
                '--hidden-import', 'sqlalchemy.ext.baked',
+               # Python 3.12 compatibility - ensure standard library modules are included
+               '--hidden-import', 'pkgutil',
+               '--hidden-import', 'importlib.machinery',
+               '--hidden-import', 'importlib.util',
                '-i', self.icon_path,
                '-n', 'OpenLP',
                *self.get_extra_parameters(),  # Adds any extra parameters we wish to use
