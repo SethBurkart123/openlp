@@ -346,6 +346,9 @@ class Builder(object):
                '--hidden-import', 'pkgutil',
                '--hidden-import', 'importlib.machinery',
                '--hidden-import', 'importlib.util',
+               # PyInstaller internal modules for runtime hooks
+               '--hidden-import', '_pyi_rth_utils',
+               '--hidden-import', 'PyInstaller.hooks.rthooks',
                '-i', self.icon_path,
                '-n', 'OpenLP',
                *self.get_extra_parameters(),  # Adds any extra parameters we wish to use

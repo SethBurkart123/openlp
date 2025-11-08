@@ -61,7 +61,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets PyInstaller>=6.0.0 macholib lxml fastmcp
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets "PyInstaller>=6.3.0,<7.0" macholib lxml fastmcp altgraph
     
     - name: Generate resources
       run: |
@@ -157,7 +157,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 PyInstaller>=6.0.0 macholib dmgbuild fastmcp
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 "PyInstaller>=6.3.0,<7.0" macholib dmgbuild fastmcp altgraph
     
     - name: Generate resources
       run: |
@@ -242,7 +242,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 PyInstaller>=6.0.0 macholib dmgbuild fastmcp
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PySide6 pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 "PyInstaller>=6.3.0,<7.0" macholib dmgbuild fastmcp altgraph
     
     - name: Generate resources
       run: |
