@@ -1,0 +1,423 @@
+name: Build OpenLP
+
+on:
+  push:
+    branches: [ main, master, features-pyqt5 ]
+  pull_request:
+    branches: [ main, master, features-pyqt5 ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        architecture: 'x64'
+    
+    - name: Install system dependencies
+      run: |
+        # List existing WiX installations
+        Write-Host "Checking for WiX installations..."
+        Get-ChildItem "C:\Program Files*" -Directory -Name "*WiX*" -ErrorAction SilentlyContinue
+        
+        # WiX Toolset is already installed on GitHub runners, find the version
+        $wixPaths = @(
+          "C:\Program Files (x86)\WiX Toolset v3.14\bin",
+          "C:\Program Files\WiX Toolset v3.14\bin",
+          "C:\Program Files (x86)\WiX Toolset v3.11\bin",
+          "C:\Program Files\WiX Toolset v3.11\bin"
+        )
+        
+        $wixFound = $false
+        foreach ($path in $wixPaths) {
+          if (Test-Path $path) {
+            Write-Host "Found WiX at: $path"
+            echo $path >> $env:GITHUB_PATH
+            $wixFound = $true
+            break
+          }
+        }
+        
+        if (-not $wixFound) {
+          Write-Host "WiX not found, installing..."
+          choco install wixtoolset -y
+          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+        }
+        
+        # Verify candle.exe is accessible
+        Write-Host "Checking if candle.exe is in PATH..."
+        where.exe candle
+        
+
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PyQt5 PyQtWebEngine pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets "PyInstaller>=6.3.0,<7.0" macholib lxml fastmcp altgraph
+    
+    - name: Generate resources
+      run: |
+        # Generate the Qt resources file that contains icons and images
+        pyrcc5 -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Remove the first 5 lines (comments) and add proper header
+        $header = @"
+        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
+
+        ##########################################################################
+        # OpenLP - Open Source Lyrics Projection                                 #
+        # ---------------------------------------------------------------------- #
+        # Copyright (c) 2008-2024 OpenLP Developers                              #
+        # ---------------------------------------------------------------------- #
+        # This program is free software: you can redistribute it and/or modify   #
+        # it under the terms of the GNU General Public License as published by   #
+        # the Free Software Foundation, either version 3 of the License, or      #
+        # (at your option) any later version.                                    #
+        #                                                                        #
+        # This program is distributed in the hope that it will be useful,        #
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
+        # GNU General Public License for more details.                           #
+        #                                                                        #
+        # You should have received a copy of the GNU General Public License      #
+        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
+        ##########################################################################
+        """
+        The :mod:`resources` module provides application images and icons in a central
+        store for use by OpenLP.
+        """
+        "@
+        # Combine header with generated content (skip first 5 lines)
+        $content = Get-Content openlp/core/resources.py.new | Select-Object -Skip 5
+        $header + "`n" + ($content -join "`n") | Out-File openlp/core/resources.py -Encoding utf8
+        # Clean up
+        Remove-Item openlp/core/resources.py.new
+    
+    - name: Create Windows config
+      run: |
+        cd packaging/windows
+        if (!(Test-Path "config.ini")) {
+          Copy-Item "config.ini.default" "config.ini"
+        }
+    
+    - name: Build Windows installer (regular)
+      run: |
+        cd packaging/builders
+        python windows-builder.py --config ../windows/config.ini --skip-update
+      env:
+        PYTHONPATH: packaging/builders
+
+    - name: List dist folder contents
+      run: |
+        Write-Host "Contents of dist folder:"
+        if (Test-Path "dist") {
+          Get-ChildItem -Path "dist" -Recurse | ForEach-Object {
+            $relativePath = $_.FullName.Replace((Get-Location).Path, "").TrimStart('\')
+            Write-Host "  $relativePath"
+          }
+        } else {
+          Write-Host "  dist folder not found"
+        }
+    
+    - name: Upload Windows MSI installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-x64-msi-installer
+        path: dist/OpenLP-*.msi
+        if-no-files-found: warn
+
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install system dependencies
+      run: |
+        # Install enchant library
+        brew install enchant
+        # Export the library path that the builder expects
+        echo "PYENCHANT_LIBRARY_PATH=/opt/homebrew/lib/libenchant-2.2.dylib" >> $GITHUB_ENV
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PyQt5 PyQtWebEngine pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 "PyInstaller>=6.3.0,<7.0" macholib dmgbuild fastmcp altgraph
+    
+    - name: Generate resources
+      run: |
+        # Generate the Qt resources file that contains icons and images
+        pyrcc5 -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Remove the first 5 lines (comments)
+        tail -n +6 openlp/core/resources.py.new > openlp/core/resources.py.tmp
+        # Add the proper header and apply patches
+        cat > openlp/core/resources.py << 'EOF'
+        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
+
+        ##########################################################################
+        # OpenLP - Open Source Lyrics Projection                                 #
+        # ---------------------------------------------------------------------- #
+        # Copyright (c) 2008-2024 OpenLP Developers                              #
+        # ---------------------------------------------------------------------- #
+        # This program is free software: you can redistribute it and/or modify   #
+        # it under the terms of the GNU General Public License as published by   #
+        # the Free Software Foundation, either version 3 of the License, or      #
+        # (at your option) any later version.                                    #
+        #                                                                        #
+        # This program is distributed in the hope that it will be useful,        #
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
+        # GNU General Public License for more details.                           #
+        #                                                                        #
+        # You should have received a copy of the GNU General Public License      #
+        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
+        ##########################################################################
+        """
+        The :mod:`resources` module provides application images and icons in a central
+        store for use by OpenLP.
+        """
+        EOF
+        cat openlp/core/resources.py.tmp >> openlp/core/resources.py
+        # Clean up temporary files
+        rm -f openlp/core/resources.py.new openlp/core/resources.py.tmp
+    
+    - name: Create macOS config
+      run: |
+        cd packaging/macos
+        if [ ! -f "config.ini" ]; then
+          cp "config.ini.default" "config.ini"
+        fi
+    
+    - name: Build macOS app
+      run: |
+        cd packaging/builders
+        python macos-builder.py --config ../macos/config.ini --skip-update
+      env:
+        PYTHONPATH: packaging/builders
+        PYENCHANT_LIBRARY_PATH: /opt/homebrew/lib/libenchant-2.2.dylib
+    
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-dmg
+        path: dist/OpenLP-*.dmg
+        if-no-files-found: warn
+
+  build-macos-intel:
+    runs-on: macos-15-intel
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install system dependencies
+      run: |
+        # Install enchant library
+        brew install enchant
+        # Export the library path that the builder expects (Intel Macs use /usr/local)
+        echo "PYENCHANT_LIBRARY_PATH=/usr/local/lib/libenchant-2.2.dylib" >> $GITHUB_ENV
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PyQt5 PyQtWebEngine pysword pytest pytest-qt QDarkStyle qrcode QtAwesome requests six sqlalchemy waitress websockets py-applescript pyobjc-core pyobjc-framework-Cocoa Pyro5 "PyInstaller>=6.3.0,<7.0" macholib dmgbuild fastmcp altgraph
+    
+    - name: Generate resources
+      run: |
+        # Generate the Qt resources file that contains icons and images
+        pyrcc5 -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Remove the first 5 lines (comments)
+        tail -n +6 openlp/core/resources.py.new > openlp/core/resources.py.tmp
+        # Add the proper header and apply patches
+        cat > openlp/core/resources.py << 'EOF'
+        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
+
+        ##########################################################################
+        # OpenLP - Open Source Lyrics Projection                                 #
+        # ---------------------------------------------------------------------- #
+        # Copyright (c) 2008-2024 OpenLP Developers                              #
+        # ---------------------------------------------------------------------- #
+        # This program is free software: you can redistribute it and/or modify   #
+        # it under the terms of the GNU General Public License as published by   #
+        # the Free Software Foundation, either version 3 of the License, or      #
+        # (at your option) any later version.                                    #
+        #                                                                        #
+        # This program is distributed in the hope that it will be useful,        #
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
+        # GNU General Public License for more details.                           #
+        #                                                                        #
+        # You should have received a copy of the GNU General Public License      #
+        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
+        ##########################################################################
+        """
+        The :mod:`resources` module provides application images and icons in a central
+        store for use by OpenLP.
+        """
+        EOF
+        cat openlp/core/resources.py.tmp >> openlp/core/resources.py
+        # Clean up temporary files
+        rm -f openlp/core/resources.py.new openlp/core/resources.py.tmp
+    
+    - name: Create macOS config
+      run: |
+        cd packaging/macos
+        if [ ! -f "config.ini" ]; then
+          cp "config.ini.default" "config.ini"
+        fi
+    
+    - name: Build macOS app
+      run: |
+        cd packaging/builders
+        python macos-builder.py --config ../macos/config.ini --skip-update
+      env:
+        PYTHONPATH: packaging/builders
+        PYENCHANT_LIBRARY_PATH: /usr/local/lib/libenchant-2.2.dylib
+    
+    - name: Upload macOS Intel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-intel-dmg
+        path: dist/OpenLP-*.dmg
+        if-no-files-found: warn
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for git describe to work properly
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Flatpak and dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y flatpak flatpak-builder python3-requests python3-ruamel.yaml python3-lxml
+        # Install requirements-parser for flatpak-pip-generator
+        pip install requirements-parser
+        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        # TODO: Flatpak for PyQt5 - io.qt.PySide.BaseApp is PySide6-specific.
+        # For a PyQt5-based flatpak, you may need a custom base or bundle PyQt5 via pip.
+        # Using Qt5-era KDE platform for now.
+        sudo flatpak install -y flathub org.kde.Platform//5.15 org.kde.Sdk//5.15
+    
+    - name: Install Python dependencies for resource generation
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install PyQt5 PyQtWebEngine fastmcp
+    
+    - name: Generate resources
+      run: |
+        # Generate the Qt resources file that contains icons and images
+        pyrcc5 -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Remove the first 5 lines (comments)
+        tail -n +6 openlp/core/resources.py.new > openlp/core/resources.py.tmp
+        # Add the proper header
+        cat > openlp/core/resources.py << 'EOF'
+        # vim: autoindent shiftwidth=4 expandtab textwidth=120 tabstop=4 softtabstop=4
+
+        ##########################################################################
+        # OpenLP - Open Source Lyrics Projection                                 #
+        # ---------------------------------------------------------------------- #
+        # Copyright (c) 2008-2024 OpenLP Developers                              #
+        # ---------------------------------------------------------------------- #
+        # This program is free software: you can redistribute it and/or modify   #
+        # it under the terms of the GNU General Public License as published by   #
+        # the Free Software Foundation, either version 3 of the License, or      #
+        # (at your option) any later version.                                    #
+        #                                                                        #
+        # This program is distributed in the hope that it will be useful,        #
+        # but WITHOUT ANY WARRANTY; without even the implied warranty of         #
+        # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #
+        # GNU General Public License for more details.                           #
+        #                                                                        #
+        # You should have received a copy of the GNU General Public License      #
+        # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
+        ##########################################################################
+        """
+        The :mod:`resources` module provides application images and icons in a central
+        store for use by OpenLP.
+        """
+        EOF
+        cat openlp/core/resources.py.tmp >> openlp/core/resources.py
+        # Clean up temporary files
+        rm -f openlp/core/resources.py.new openlp/core/resources.py.tmp
+    
+    - name: Generate Python dependencies
+      run: |
+        cd packaging/flatpak
+        # Get the flatpak-pip-generator tool
+        curl -O https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator.py
+        chmod +x flatpak-pip-generator.py
+        python3 flatpak-pip-generator.py --requirements-file requirements.txt
+    
+    - name: Build Flatpak
+      run: |
+        cd packaging/flatpak
+        mkdir -p repo
+        flatpak-builder --install-deps-from=flathub --force-clean --repo=repo build-dir org.openlp.OpenLP.yml
+    
+    - name: Create Flatpak bundle
+      run: |
+        cd packaging/flatpak
+        # Get version from git
+        VERSION=$(git describe --tags --always)
+        flatpak build-bundle repo openlp-${VERSION}.flatpak org.openlp.OpenLP
+    
+    - name: Upload Linux artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-flatpak
+        path: packaging/flatpak/openlp-*.flatpak
+        if-no-files-found: warn
+
+  # Optional: Create a release if this is a tag push
+  release:
+    needs: [build-windows, build-macos, build-macos-intel, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          windows-x64-installer/*
+          macos-dmg/*
+          macos-intel-dmg/*
+          linux-flatpak/*
+        draft: true
+        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

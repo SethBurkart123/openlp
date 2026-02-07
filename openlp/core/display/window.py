@@ -201,7 +201,7 @@ class DisplayWindow(QtWidgets.QWidget, RegistryProperties, LogMixin):
             self.is_display = True
             # Only make visible on single monitor setup if setting enabled.
             if not start_hidden and (len(ScreenList()) > 1 or self.settings.value('core/display on monitor')):
-                self.show()
+                self.auto_show(screen.custom_geometry is not None)
 
     def closeEvent(self, event):
         """
@@ -260,6 +260,18 @@ class DisplayWindow(QtWidgets.QWidget, RegistryProperties, LogMixin):
         """
         self.setGeometry(screen.display_geometry)
         self.screen_number = screen.number
+
+    def auto_show(self, has_custom_geometry: bool):
+        """
+        Displays the window using the fullscreen function if using the whole screen (allows drawing over system UI)
+
+        :param bool has_custom_geometry: Whether the display a custom geometry
+        """
+
+        if has_custom_geometry:
+            self.show()
+        else:
+            self.showFullScreen()
 
     def set_background_image(self, image_path):
         image_uri = image_path.as_uri()
@@ -321,13 +333,24 @@ class DisplayWindow(QtWidgets.QWidget, RegistryProperties, LogMixin):
                             'hideMouse': hide_mouse,
                             'displayTitle': self.window_title
                             })
-        wait_for(lambda: self._is_initialised)
-        if self.scale != 1:
-            self.set_scale(self.scale)
-        if self._can_show_startup_screen:
-            self.set_startup_screen()
-        if self.after_loaded_callback:
-            self.after_loaded_callback()
+        # Defer post-init work until the display reports initialised to avoid blocking startup
+        def _finish_after_init(_=None):
+            try:
+                self.display_watcher.initialised.disconnect(_finish_after_init)
+            except Exception:
+                pass
+            if self.scale != 1:
+                self.set_scale(self.scale)
+            if self._can_show_startup_screen:
+                self.set_startup_screen()
+            if self.after_loaded_callback:
+                self.after_loaded_callback()
+
+        if self._is_initialised:
+            _finish_after_init()
+        else:
+            # Run once when initialisation completes
+            self.display_watcher.initialised.connect(_finish_after_init)
 
     def run_in_display(self, action, *parameters, raw_parameters=None, is_sync=False, return_event_name=None):
         if len(parameters):

@@ -185,7 +185,7 @@ class Ui_MainWindow(object):
                                                triggers=self.service_manager_contents.save_file_as)
         self.print_service_order_item = create_action(main_window, 'printServiceItem', can_shortcuts=True,
                                                       category=UiStrings().File,
-                                                      triggers=lambda x: PrintServiceForm().exec())
+                                                      triggers=self.on_print_service_triggered)
         self.file_exit_item = create_action(main_window, 'fileExitItem', icon=UiIcons().exit,
                                             can_shortcuts=True,
                                             category=UiStrings().File, triggers=main_window.close)
@@ -472,6 +472,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
     """
     The main window.
     """
+    # Thread-safe signals for UI operations
+    show_error_message = QtCore.pyqtSignal(str, str)
+    show_warning_message = QtCore.pyqtSignal(str, str)
+    show_information_message = QtCore.pyqtSignal(str, str)
+
     def __init__(self):
         """
         This constructor sets up the interface, the various managers, and the plugins.
@@ -517,6 +522,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         self.mode_default_item.triggered.connect(self.on_mode_default_item_clicked)
         self.mode_setup_item.triggered.connect(self.on_mode_setup_item_clicked)
         self.mode_live_item.triggered.connect(self.on_mode_live_item_clicked)
+        # Thread-safe UI message signals
+        self.show_error_message.connect(self._show_error_message_slot)
+        self.show_warning_message.connect(self._show_warning_message_slot)
+        self.show_information_message.connect(self._show_information_message_slot)
         # Media Manager
         self.media_tool_box.currentChanged.connect(self.on_media_tool_box_changed)
         self.application.set_busy_cursor()
@@ -764,9 +773,15 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         :param title: The title of the warning box.
         :param message: The message to be displayed.
         """
-        if hasattr(self.application, 'splash'):
-            self.application.splash.close()
-        QtWidgets.QMessageBox.critical(self, title, message)
+        # Check if we're on the main thread
+        if QtCore.QThread.currentThread() == QtWidgets.QApplication.instance().thread():
+            # We're on the main thread, show dialog directly
+            if hasattr(self.application, 'splash'):
+                self.application.splash.close()
+            QtWidgets.QMessageBox.critical(self, title, message)
+        else:
+            # We're on a background thread, use signal to show dialog on main thread
+            self.show_error_message.emit(title, message)
 
     def warning_message(self, title: str, message: str):
         """
@@ -775,9 +790,15 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         :param title:  The title of the warning box.
         :param message: The message to be displayed.
         """
-        if hasattr(self.application, 'splash'):
-            self.application.splash.close()
-        QtWidgets.QMessageBox.warning(self, title, message)
+        # Check if we're on the main thread
+        if QtCore.QThread.currentThread() == QtWidgets.QApplication.instance().thread():
+            # We're on the main thread, show dialog directly
+            if hasattr(self.application, 'splash'):
+                self.application.splash.close()
+            QtWidgets.QMessageBox.warning(self, title, message)
+        else:
+            # We're on a background thread, use signal to show dialog on main thread
+            self.show_warning_message.emit(title, message)
 
     def information_message(self, title: str, message: str):
         """
@@ -785,6 +806,39 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
 
         :param title: The title of the warning box.
         :param message: The message to be displayed.
+        """
+        # Check if we're on the main thread
+        if QtCore.QThread.currentThread() == QtWidgets.QApplication.instance().thread():
+            # We're on the main thread, show dialog directly
+            if hasattr(self.application, 'splash'):
+                self.application.splash.close()
+            QtWidgets.QMessageBox.information(self, title, message)
+        else:
+            # We're on a background thread, use signal to show dialog on main thread
+            self.show_information_message.emit(title, message)
+
+    @QtCore.pyqtSlot(str, str)
+    def _show_error_message_slot(self, title: str, message: str):
+        """
+        Slot to show error message on main thread
+        """
+        if hasattr(self.application, 'splash'):
+            self.application.splash.close()
+        QtWidgets.QMessageBox.critical(self, title, message)
+
+    @QtCore.pyqtSlot(str, str)
+    def _show_warning_message_slot(self, title: str, message: str):
+        """
+        Slot to show warning message on main thread
+        """
+        if hasattr(self.application, 'splash'):
+            self.application.splash.close()
+        QtWidgets.QMessageBox.warning(self, title, message)
+
+    @QtCore.pyqtSlot(str, str)
+    def _show_information_message_slot(self, title: str, message: str):
+        """
+        Slot to show information message on main thread
         """
         if hasattr(self.application, 'splash'):
             self.application.splash.close()
@@ -1037,6 +1091,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
                                                   UiStrings().ScreenSetupHasChangedTitle,
                                                   UiStrings().ScreenSetupHasChanged,
                                                   QtWidgets.QMessageBox.StandardButtons(QtWidgets.QMessageBox.Ok))
+                self.screen_change_timestamp = datetime.now()
             self.screen_updating_lock.acquire()
             self.application.set_busy_cursor()
             self.renderer.resize(self.live_controller.screens.current.display_geometry.size())
@@ -1489,6 +1544,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
         # Drop this argument, it's obvs not a filename
         if '--disable-web-security' in args:
             args.remove('--disable-web-security')
+        # strip platform args, not a filename either
+        try:
+            platform_idx = args.index('-platform')
+            if platform_idx >= 0:
+                # remove the platform arg
+                args.pop(platform_idx)
+                # remove the platform input
+                args.pop(platform_idx)
+        except (ValueError, IndexError):
+            pass
         # It has been known for Microsoft to double quote the path passed in and then encode one of the quotes.
         # Remove these to get the correct path.
         args = list(map(lambda x: x.replace('&quot;', ''), args))
@@ -1525,3 +1590,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow, LogMixin, RegistryPropert
             self.service_manager_contents.load_file(file_path)
         else:
             self.log_error(f"File {file_path} not found for arg {args}")
+
+    def on_print_service_triggered(self):
+        """
+        Handle the print service menu action by opening the new webview-based print service form
+        """
+        print_form = PrintServiceForm()
+        print_form.exec()

@@ -3,7 +3,7 @@
 ##########################################################################
 # OpenLP - Open Source Lyrics Projection                                 #
 # ---------------------------------------------------------------------- #
-# Copyright (c) 2008-2024 OpenLP Developers                              #
+# Copyright (c) 2008 OpenLP Developers                                   #
 # ---------------------------------------------------------------------- #
 # This program is free software: you can redistribute it and/or modify   #
 # it under the terms of the GNU General Public License as published by   #
@@ -24,7 +24,7 @@ from pathlib import Path
 
 from PyQt5 import QtCore
 
-from openlp.core.common import Singleton, md5_hash, sha256_file_hash
+from openlp.core.common import Singleton, sha256_file_hash
 from openlp.core.common.applocation import AppLocation
 from openlp.core.common.path import create_paths
 from openlp.core.common.registry import Registry
@@ -147,44 +147,34 @@ class PresentationDocument(object):
         :return: The path to the thumbnail
         :rtype: Path
         """
-        # TODO: Can be removed when the upgrade path to OpenLP 3.0 is no longer needed, also ensure code in
-        #       get_temp_folder and PresentationPluginapp_startup is removed
-        if self.settings.value('presentations/thumbnail_scheme') == 'md5':
-            folder = md5_hash(bytes(self.file_path))
-        elif self.settings.value('presentations/thumbnail_scheme') == 'sha256file':
-            if self._sha256_file_hash:
-                folder = self._sha256_file_hash
-            else:
-                self._sha256_file_hash = sha256_file_hash(self.file_path)
-                # If the sha256_file_hash() function encounters an error, it will return None, so use the
-                # filename as the thumbnail folder if the result is None (or falsey).
-                folder = self._sha256_file_hash or self.file_path.name
-        else:
-            folder = self.file_path.name
-        return Path(self.controller.thumbnail_folder, folder)
+        return self.get_folder(self.controller.thumbnail_folder)
 
     def get_temp_folder(self):
         """
-        The location where thumbnail images will be stored
+        The location where temporary files will be stored
 
         :return: The path to the temporary file folder
         :rtype: Path
         """
-        # TODO: Can be removed when the upgrade path to OpenLP 3.0 is no longer needed, also ensure code in
-        #       get_thumbnail_folder and PresentationPluginapp_startup is removed
-        if self.settings.value('presentations/thumbnail_scheme') == 'md5':
-            folder = md5_hash(bytes(self.file_path))
-        elif self.settings.value('presentations/thumbnail_scheme') == 'sha256file':
-            if self._sha256_file_hash:
-                folder = self._sha256_file_hash
-            else:
+        return self.get_folder(self.controller.temp_folder)
+
+    def get_folder(self, root_folder: Path):
+        if self._sha256_file_hash:
+            path = self._sha256_file_hash
+        else:
+            try:
                 self._sha256_file_hash = sha256_file_hash(self.file_path)
+            except (PermissionError, OSError) as e:
+                log.warning('Failed to generate file hash for {file_path}: {error}. Using filename as fallback.'.format(
+                    file_path=self.file_path, error=str(e)))
+                # Use filename as fallback when hash generation fails
+                self._sha256_file_hash = None
+                path = self.file_path.name
+            else:
                 # If the sha256_file_hash() function encounters an error, it will return None, so use the
                 # filename as the temp folder if the result is None (or falsey).
-                folder = self._sha256_file_hash or self.file_path.name
-        else:
-            folder = self.file_path.name
-        return Path(self.controller.temp_folder, folder)
+                path = self._sha256_file_hash or self.file_path.name
+        return Path(root_folder, path)
 
     def check_thumbnails(self):
         """
@@ -367,9 +357,9 @@ class PresentationDocument(object):
         for slide_no, title in enumerate(titles, 1):
             notes_path = self.get_thumbnail_folder() / 'slideNotes{number:d}.txt'.format(number=slide_no)
             try:
-                note = notes_path.read_text()
+                note = notes_path.read_text(encoding='utf-8')
             except Exception:
-                log.exception('Failed to open/read notes file')
+                log.exception(f'Failed to open/read notes file {notes_path}')
                 note = ''
             notes.append(note)
         return titles, notes
@@ -382,12 +372,13 @@ class PresentationDocument(object):
         :param list[str] notes: The notes to save
         :rtype: None
         """
+        thumbnail_folder = self.get_thumbnail_folder()
         if titles:
-            titles_path = self.get_thumbnail_folder() / 'titles.txt'
+            titles_path = thumbnail_folder / 'titles.txt'
             titles_path.write_text('\n'.join(titles), encoding='utf-8')
         if notes:
             for slide_no, note in enumerate(notes, 1):
-                notes_path = self.get_thumbnail_folder() / 'slideNotes{number:d}.txt'.format(number=slide_no)
+                notes_path = thumbnail_folder / 'slideNotes{number:d}.txt'.format(number=slide_no)
                 notes_path.write_text(note, encoding='utf-8')
 
     def get_sha256_file_hash(self):
@@ -407,31 +398,36 @@ class PresentationDocument(object):
 
 class PresentationList(metaclass=Singleton):
     """
-    This is a singleton class which maintains a list of instances for presentations
-    which have been started.
-    The document load_presentation() method is called several times - for example, when the
-    presentation files are being loaded into the library - but a document is included in this
-    PresentationList only when the presentation is actually displayed.
-    In this case the loading is initiated by a Registry 'presentation_start' event, the message
-    includes the service item, and the unique_identifier from the service item is used as the id
-    to differentiate the presentation document instances within this PresentationList.
-    The purpose of this is so that the 'presentation_stop' event, which also includes the service
-    item and its unique identifier, can result in the correct presentation being stopped.
-    This fixes issue #700
+    This is a singleton class that maintains a list of instances for presentations
+    that have been started.
+
+    The document load_presentation() method is called multiple times — for example, when
+    presentation files are loaded into the library — but a document is included in this
+    PresentationList only when it is actually displayed.
+
+    When a presentation starts, it is triggered by a Registry 'presentation_start' event,
+    which includes the service item. Instead of using the service item's unique identifier
+    directly, a new unique identifier (`unique_presentation_id`) is created by appending
+    "_is_live_True" or "_is_live_False" based on whether the presentation is live or in preview.
+
+    This prevents conflicts where a preview presentation's closure could mistakenly close
+    the live presentation, addressing a prior issue where both shared the same identifier.
+    The 'presentation_stop' event also uses this unique identifier to correctly stop
+    the intended presentation.
     """
 
     def __init__(self):
         self._presentations = {}
 
-    def add(self, document, unique_id):
-        self._presentations[unique_id] = document
+    def add(self, document, unique_presentation_id):
+        self._presentations[unique_presentation_id] = document
 
-    def remove(self, unique_id):
-        del self._presentations[unique_id]
+    def remove(self, unique_presentation_id):
+        del self._presentations[unique_presentation_id]
 
-    def get_presentation_by_id(self, unique_id):
-        if unique_id in self._presentations:
-            return self._presentations[unique_id]
+    def get_presentation_by_id(self, unique_presentation_id):
+        if unique_presentation_id in self._presentations:
+            return self._presentations[unique_presentation_id]
         else:
             return None
 

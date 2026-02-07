@@ -160,17 +160,14 @@ class SettingsForm(QtWidgets.QDialog, Ui_SettingsDialog, RegistryProperties):
         """
         Run any post-setup code for the tabs on the form
         """
-        try:
-            self.general_tab = GeneralTab(self)
-            self.service_tab = ServiceTab(self)
-            self.themes_tab = ThemesTab(self)
-            self.projector_tab = ProjectorTab(self)
-            self.advanced_tab = AdvancedTab(self)
-            self.player_tab = MediaTab(self)
-            self.api_tab = ApiTab(self)
-            self.screens_tab = ScreensTab(self)
-        except Exception as e:
-            print(e)
+        self.general_tab = GeneralTab(self)
+        self.service_tab = ServiceTab(self)
+        self.themes_tab = ThemesTab(self)
+        self.projector_tab = ProjectorTab(self)
+        self.advanced_tab = AdvancedTab(self)
+        self.player_tab = MediaTab(self)
+        self.api_tab = ApiTab(self)
+        self.screens_tab = ScreensTab(self)
         self.general_tab.post_set_up()
         self.themes_tab.post_set_up()
         self.advanced_tab.post_set_up()

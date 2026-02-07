@@ -26,7 +26,7 @@ import logging
 import shutil
 from pathlib import Path
 
-from sqlalchemy import Column, ForeignKey, MetaData, Table, inspect, select
+from sqlalchemy import Column, ForeignKey, MetaData, Table, func, inspect, select
 from sqlalchemy.orm import Session
 from sqlalchemy.types import Integer, Unicode
 
@@ -158,18 +158,33 @@ def upgrade_4(session: Session, metadata: MetaData):
         )
     else:
         new_item_table = Table('item', metadata, autoload_with=metadata.bind)
-    # Bulk insert all the data from the old tables to the new tables
-    folders = []
-    for old_folder in conn.execute(old_folder_table.select()).fetchall():
-        folders.append({'id': old_folder.id, 'name': old_folder.group_name,
-                        'parent_id': old_folder.parent_id if old_folder.parent_id != 0 else None})
-    op.bulk_insert(new_folder_table, folders)
-    items = []
-    for old_item in conn.execute(old_item_table.select()).fetchall():
-        file_path = json.loads(old_item.file_path, cls=OpenLPJSONDecoder)
-        items.append({'id': old_item.id, 'name': file_path.name, 'file_path': str(file_path),
-                      'file_hash': old_item.file_hash, 'folder_id': old_item.group_id})
-    op.bulk_insert(new_item_table, items)
+    # Bulk insert all the data from the old tables to the new tables.
+    # Check counts first to make this idempotent (safe to re-run after a partial crash).
+    folder_count = conn.execute(select(func.count()).select_from(new_folder_table)).scalar()
+    if folder_count == 0:
+        folders = []
+        for old_folder in conn.execute(old_folder_table.select()).fetchall():
+            folders.append({
+                'id': old_folder.id,
+                'name': old_folder.group_name,
+                'parent_id': getattr(old_folder, 'parent_id', 0) if getattr(old_folder, 'parent_id', 0) != 0
+                else None
+            })
+        if folders:
+            op.bulk_insert(new_folder_table, folders)
+    item_count = conn.execute(select(func.count()).select_from(new_item_table)).scalar()
+    if item_count == 0:
+        items = []
+        for old_item in conn.execute(old_item_table.select()).fetchall():
+            file_path = json.loads(old_item.file_path, cls=OpenLPJSONDecoder)
+            items.append({
+                'name': file_path.name,
+                'file_path': str(file_path),
+                'file_hash': old_item.file_hash,
+                'folder_id': getattr(old_item, 'group_id', None)
+            })
+        if items:
+            op.bulk_insert(new_item_table, items)
     # Remove the old tables
     del old_item_table
     del old_folder_table

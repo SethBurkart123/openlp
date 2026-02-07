@@ -195,6 +195,7 @@ class Settings(QtCore.QSettings):
         'advanced/slide numbers in footer': False,
         'advanced/single click preview': False,
         'advanced/single click service preview': False,
+        'advanced/bypass_backup_on_version_change': False,
         'advanced/x11 bypass wm': X11_BYPASS_DEFAULT,
         'advanced/prefer windowed screen capture': False,
         'advanced/search as type': True,
@@ -298,11 +299,17 @@ class Settings(QtCore.QSettings):
         'images/db database': '',
         'images/last directory': None,
         'images/status': PluginStatus.Inactive,
+        'mcp/status': PluginStatus.Inactive,
+        'mcp/port': 8765,
+        'mcp/host': '127.0.0.1',
+        'mcp/auto_start': False,
+        'mcp/video_quality': 'best',
+        'mcp/keep_downloads': False,
+        'mcp/download_location': '',
         'media/status': PluginStatus.Inactive,
         'media/media files': [],
         'media/last directory': None,
         'media/media auto start': QtCore.Qt.Unchecked,
-        'media/vlc arguments': '',
         'media/live volume': 50,
         'media/preview volume': 0,
         'media/live loop': False,
@@ -312,6 +319,7 @@ class Settings(QtCore.QSettings):
         'media/db password': '',
         'media/db hostname': '',
         'media/db database': '',
+        'media/vlc arguments': '',
         'players/background color': '#000000',
         'planningcenter/status': PluginStatus.Inactive,
         'planningcenter/application_id': '',
@@ -325,7 +333,6 @@ class Settings(QtCore.QSettings):
         'presentations/Keynote': QtCore.Qt.Checked,
         'presentations/PowerPointMac': QtCore.Qt.Checked,
         'presentations/presentations files': [],
-        'presentations/thumbnail_scheme': '',
         'presentations/powerpoint slide click advance': QtCore.Qt.Unchecked,
         'presentations/powerpoint control window': QtCore.Qt.Unchecked,
         'presentations/impress use display setting': QtCore.Qt.Unchecked,
@@ -335,6 +342,7 @@ class Settings(QtCore.QSettings):
         'presentations/db password': '',
         'presentations/db hostname': '',
         'presentations/db database': '',
+        'presentations/thumbnail_scheme': '',
         'servicemanager/last directory': None,
         'servicemanager/last file': None,
         'servicemanager/service theme': None,
@@ -352,6 +360,7 @@ class Settings(QtCore.QSettings):
         'songs/last import type': 0,
         'songs/update service on edit': False,
         'songs/add song from service': True,
+        'songs/favourites_toggled': False,
         'songs/first slide mode': SongFirstSlideMode.Default,
         'songs/display songbar': True,
         'songs/last directory import': None,
@@ -491,6 +500,7 @@ class Settings(QtCore.QSettings):
     __setting_upgrade_3__ = [
         ('songs/add songbook slide', 'songs/first slide mode', [(upgrade_add_first_songbook_slide_config, False)])
     ]
+
 
     @staticmethod
     def extend_default_settings(default_values):

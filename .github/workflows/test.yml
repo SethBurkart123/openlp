@@ -1,0 +1,184 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop, features-pyqt5 ]
+  pull_request:
+    branches: [ main, develop, features-pyqt5 ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+        exclude:
+          - os: macos-latest
+            python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.11"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libdbus-1-dev \
+          libdbus-glib-1-dev \
+          libenchant-2-2 \
+          libenchant-2-dev \
+          libicu-dev \
+          pkg-config \
+          libegl1-mesa \
+          libgl1-mesa-glx \
+          libglib2.0-0 \
+          libxkbcommon-x11-0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-xinerama0 \
+          libxcb-xfixes0 \
+          xvfb
+      shell: bash
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install \
+          enchant \
+          dbus \
+          dbus-glib \
+          icu4c \
+          pkg-config
+        # Set up ICU environment for macOS
+        ICU_PREFIX=$(brew --prefix icu4c)
+        echo "PKG_CONFIG_PATH=${ICU_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "PATH=${ICU_PREFIX}/bin:$PATH" >> $GITHUB_ENV
+        echo "LDFLAGS=-L${ICU_PREFIX}/lib" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I${ICU_PREFIX}/include" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Install system dependencies (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Write-Host 'Setting up Windows environment for testing...'
+        # Set environment variable to prefer binary PyICU installation
+        Add-Content -Path $env:GITHUB_ENV -Value "PYICU_USE_BINARY=1"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Install Python dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Use the same approach as build.yml for Windows - install dependencies manually
+        python -m pip install --upgrade pip
+        pip install alembic beautifulsoup4 chardet flask flask-cors lxml Mako mock mysql-connector-python packaging platformdirs psycopg2-binary pyenchant PyQt5 PyQtWebEngine pysword QDarkStyle QtAwesome qrcode requests six sqlalchemy waitress websockets PyInstaller macholib fastmcp
+        # Install test-specific dependencies
+        pip install pytest pytest-qt flake8
+        # Try to install PyICU - use binary wheel if available, skip if it fails
+        pip install --only-binary=PyICU PyICU || echo "PyICU installation failed, continuing without it"
+
+    - name: Sync dependencies (Non-Windows)
+      if: runner.os != 'Windows'
+      run: uv sync --extra test
+
+    - name: Generate resources (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        pyrcc5 -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Create header file
+        echo '# -*- coding: utf-8 -*-' > openlp/core/resources.py
+        echo '' >> openlp/core/resources.py
+        echo '##########################################################################' >> openlp/core/resources.py
+        echo '# OpenLP - Open Source Lyrics Projection                                 #' >> openlp/core/resources.py
+        echo '# ---------------------------------------------------------------------- #' >> openlp/core/resources.py
+        echo '# Copyright (c) 2008-2024 OpenLP Developers                              #' >> openlp/core/resources.py
+        echo '# ---------------------------------------------------------------------- #' >> openlp/core/resources.py
+        echo '# This program is free software: you can redistribute it and/or modify   #' >> openlp/core/resources.py
+        echo '# it under the terms of the GNU General Public License as published by   #' >> openlp/core/resources.py
+        echo '# the Free Software Foundation, either version 3 of the License, or      #' >> openlp/core/resources.py
+        echo '# (at your option) any later version.                                    #' >> openlp/core/resources.py
+        echo '#                                                                        #' >> openlp/core/resources.py
+        echo '# This program is distributed in the hope that it will be useful,        #' >> openlp/core/resources.py
+        echo '# but WITHOUT ANY WARRANTY; without even the implied warranty of         #' >> openlp/core/resources.py
+        echo '# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #' >> openlp/core/resources.py
+        echo '# GNU General Public License for more details.                           #' >> openlp/core/resources.py
+        echo '#                                                                        #' >> openlp/core/resources.py
+        echo '# You should have received a copy of the GNU General Public License      #' >> openlp/core/resources.py
+        echo '# along with this program.  If not, see <https://www.gnu.org/licenses/>. #' >> openlp/core/resources.py
+        echo '##########################################################################' >> openlp/core/resources.py
+        echo '"""' >> openlp/core/resources.py
+        echo 'The :mod:`resources` module provides application images and icons in a central' >> openlp/core/resources.py
+        echo 'store for use by OpenLP.' >> openlp/core/resources.py
+        echo '"""' >> openlp/core/resources.py
+        # Append content from line 6 onwards
+        tail -n +6 openlp/core/resources.py.new >> openlp/core/resources.py
+        rm -f openlp/core/resources.py.new
+      shell: bash
+
+    - name: Generate resources (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        uv run pyrcc5 -o openlp/core/resources.py.new resources/images/openlp-2.qrc
+        # Create header file using echo commands (same as Windows approach)
+        echo '# -*- coding: utf-8 -*-' > openlp/core/resources.py
+        echo '' >> openlp/core/resources.py
+        echo '##########################################################################' >> openlp/core/resources.py
+        echo '# OpenLP - Open Source Lyrics Projection                                 #' >> openlp/core/resources.py
+        echo '# ---------------------------------------------------------------------- #' >> openlp/core/resources.py
+        echo '# Copyright (c) 2008-2024 OpenLP Developers                              #' >> openlp/core/resources.py
+        echo '# ---------------------------------------------------------------------- #' >> openlp/core/resources.py
+        echo '# This program is free software: you can redistribute it and/or modify   #' >> openlp/core/resources.py
+        echo '# it under the terms of the GNU General Public License as published by   #' >> openlp/core/resources.py
+        echo '# the Free Software Foundation, either version 3 of the License, or      #' >> openlp/core/resources.py
+        echo '# (at your option) any later version.                                    #' >> openlp/core/resources.py
+        echo '#                                                                        #' >> openlp/core/resources.py
+        echo '# This program is distributed in the hope that it will be useful,        #' >> openlp/core/resources.py
+        echo '# but WITHOUT ANY WARRANTY; without even the implied warranty of         #' >> openlp/core/resources.py
+        echo '# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          #' >> openlp/core/resources.py
+        echo '# GNU General Public License for more details.                           #' >> openlp/core/resources.py
+        echo '#                                                                        #' >> openlp/core/resources.py
+        echo '# You should have received a copy of the GNU General Public License      #' >> openlp/core/resources.py
+        echo '# along with this program.  If not, see <https://www.gnu.org/licenses/>. #' >> openlp/core/resources.py
+        echo '##########################################################################' >> openlp/core/resources.py
+        echo '"""' >> openlp/core/resources.py
+        echo 'The :mod:`resources` module provides application images and icons in a central' >> openlp/core/resources.py
+        echo 'store for use by OpenLP.' >> openlp/core/resources.py
+        echo '"""' >> openlp/core/resources.py
+        # Append content from line 6 onwards
+        tail -n +6 openlp/core/resources.py.new >> openlp/core/resources.py
+        rm -f openlp/core/resources.py.new
+      shell: bash
+
+    - name: Run tests
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          python -m pytest tests/ -v --tb=short
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          # Use virtual display for Linux GUI tests
+          export QT_QPA_PLATFORM=offscreen
+          xvfb-run -a -s "-screen 0 1024x768x24" uv run python -m pytest tests/ -v --tb=short
+        else
+          # macOS
+          uv run python -m pytest tests/ -v --tb=short
+        fi
+      shell: bash

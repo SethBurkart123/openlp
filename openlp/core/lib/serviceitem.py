@@ -108,6 +108,7 @@ class ServiceItem(RegistryProperties):
         self.has_original_file_path = True
         self.sha256_file_hash = None
         self.stored_filename = None
+        self.print_service_data = {}
         self._new_item()
         self.metadata = []
 
@@ -431,7 +432,8 @@ class ServiceItem(RegistryProperties):
             'processor': self.processor,
             'metadata': self.metadata,
             'sha256_file_hash': self.sha256_file_hash,
-            'stored_filename': stored_filename
+            'stored_filename': stored_filename,
+            'print_service_data': self.print_service_data
         }
         for file_path, file_hash in self.background_audio:
             if lite_save:
@@ -534,6 +536,7 @@ class ServiceItem(RegistryProperties):
         self.has_original_file_path = True
         self.metadata = header.get('item_meta_data', [])
         self.sha256_file_hash = header.get('sha256_file_hash', None)
+        self.print_service_data = header.get('print_service_data', {})
         self.stored_filename = header.get('stored_filename', None)
         if 'background_audio' in header and State().check_preconditions('media'):
             self.background_audio = []
@@ -572,8 +575,9 @@ class ServiceItem(RegistryProperties):
                         if text_image['image']:
                             thumbnail = AppLocation.get_data_path() / text_image['image']
                             # copy thumbnail from servicemanager path
-                            if thumbnail.exists():
-                                copy(path / 'thumbnails' / os.path.basename(text_image['image']),
+                            source_thumbnail = path / 'thumbnails' / os.path.basename(text_image['image'])
+                            if source_thumbnail.exists():
+                                copy(source_thumbnail,
                                      AppLocation.get_section_data_path(self.name) / 'thumbnails')
                     else:
                         text = text_image
@@ -900,7 +904,6 @@ class ServiceItem(RegistryProperties):
         """
         Validates a service item to make sure it is valid
 
-        :param set[str] suffixes: A set of valid suffixes
         """
         self.is_valid = True
         for slide in self.slides:
@@ -933,7 +936,7 @@ class ServiceItem(RegistryProperties):
                         self.is_valid = False
                         break
                     if suffixes and not self.is_text():
-                        file_suffix = "*.{suffx}".format(suffx=slide['title'].split('.')[-1])
+                        file_suffix = "{suffx}".format(suffx=slide['title'].split('.')[-1])
                         if file_suffix.lower() not in suffixes:
                             self.is_valid = False
                             break

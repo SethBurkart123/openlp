@@ -3,7 +3,7 @@
 ##########################################################################
 # OpenLP - Open Source Lyrics Projection                                 #
 # ---------------------------------------------------------------------- #
-# Copyright (c) 2008-2024 OpenLP Developers                              #
+# Copyright (c) 2008 OpenLP Developers                                   #
 # ---------------------------------------------------------------------- #
 # This program is free software: you can redistribute it and/or modify   #
 # it under the terms of the GNU General Public License as published by   #
@@ -19,392 +19,1040 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
 ##########################################################################
 """
-The actual print service dialog
+The new webview-based print service dialog using modern HTML/CSS
 """
 import datetime
 import html
+import os
+import tempfile
 
-import lxml.html
-from PyQt5 import QtCore, QtGui, QtPrintSupport, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets, QtPrintSupport
+from PyQt5.QtWebChannel import QWebChannel
 
-from openlp.core.common.applocation import AppLocation
-from openlp.core.common.i18n import UiStrings, translate
+from openlp.core.common.i18n import translate
 from openlp.core.common.mixins import RegistryProperties
 from openlp.core.common.registry import Registry
-from openlp.core.lib import get_text_file_string
-from openlp.core.ui.printservicedialog import Ui_PrintServiceDialog, ZoomSize
+from openlp.core.common.settings import Settings
+from openlp.core.display.webengine import WebEngineView
+from openlp.core.ui.icons import UiIcons
+from openlp.core.ui.printservice_templates import (
+    TemplateRegistry,
+    get_base_template,
+    render_table_items,
+    get_footer_section,
+    generate_table_headers,
+    generate_colgroup,
+    get_base_css,
+)
+
+class ServiceTemplate:
+    """Service runsheet template options"""
+    PROFESSIONAL = "professional"
 
 
-DEFAULT_CSS = """/*
-Edit this file to customize the service order print. Note, that not all CSS
-properties are supported. See:
-https://doc.qt.io/qt-5/richtext-html-subset.html#css-properties
-*/
-
-.serviceTitle {
-   font-weight: 600;
-   font-size: x-large;
-   color: black;
-}
-
-.item {
-   color: black;
-}
-
-.itemTitle {
-   font-weight: 600;
-   font-size: large;
-}
-
-.itemText {
-   margin-top: 10px;
-}
-
-.itemFooter {
-   font-size: 8px;
-}
-
-.itemNotes {}
-
-.itemNotesTitle {
-   font-weight: bold;
-   font-size: 12px;
-}
-
-.itemNotesText {
-   font-size: 11px;
-}
-
-.media {}
-
-.mediaTitle {
-    font-weight: bold;
-    font-size: 11px;
-}
-
-.mediaText {}
-
-.imageList {}
-
-.customNotes {
-   margin-top: 10px;
-}
-
-.customNotesTitle {
-   font-weight: bold;
-   font-size: 11px;
-}
-
-.customNotesText {
-   font-size: 11px;
-}
-
-.newPage {
-    page-break-before: always;
-}
-
-table.line {}
-
-table.segment {
-  float: left;
-}
-
-td.chord {
-    font-size: 80%;
-}
-
-td.lyrics {
-}
-"""
+class ColumnType:
+    """Column types for service runsheet"""
+    FIXED = "fixed"          # Non-editable display only
+    EDITABLE = "editable"    # Simple text editable
+    TIME = "time"           # Special time column
 
 
-class PrintServiceForm(QtWidgets.QDialog, Ui_PrintServiceDialog, RegistryProperties):
+class DefaultColumns:
+    """Default column configuration"""
+    @staticmethod
+    def get_default_columns():
+        return [
+            {"id": "time", "name": "Time", "type": ColumnType.TIME, "removable": False},
+            {"id": "item", "name": "Item", "type": ColumnType.FIXED, "removable": False},
+            {"id": "person", "name": "Person", "type": ColumnType.EDITABLE, "removable": True},
+            {"id": "av", "name": "Audio/Visual", "type": ColumnType.EDITABLE, "removable": True},
+            {"id": "vocals", "name": "Vocals", "type": ColumnType.EDITABLE, "removable": True},
+        ]
+
+
+class WebChannelBridge(QtCore.QObject):
+    field_updated = QtCore.pyqtSignal(str, str, str)
+    section_header_added = QtCore.pyqtSignal(str, str)
+    
+    @QtCore.pyqtSlot(str, str, str)
+    def updateField(self, item_id, field, value):
+        self.field_updated.emit(item_id, field, value)
+    
+    @QtCore.pyqtSlot(str, str)
+    def addSectionHeader(self, after_item_id, header_text):
+        self.section_header_added.emit(after_item_id, header_text)
+
+
+class PrintServiceForm(QtWidgets.QDialog, RegistryProperties):
     """
-    The :class:`~openlp.core.ui.printserviceform.PrintServiceForm` class displays a dialog for printing the service.
+    The WebView-based print service form for creating professional service runsheets
     """
+    
+    @staticmethod
+    def register_default_settings():
+        """
+        Register default settings for the webview print service form
+        """
+        default_settings = {
+            'webview_print_service/title': 'Service Runsheet',
+            'webview_print_service/template': ServiceTemplate.PROFESSIONAL,
+            'webview_print_service/include_times': True,
+            'webview_print_service/include_notes': True,
+            'webview_print_service/include_slides': False,
+            'webview_print_service/include_media_info': True,
+            'webview_print_service/columns': DefaultColumns.get_default_columns(),
+            'webview_print_service/orientation': 'landscape',
+        }
+        Settings.extend_default_settings(default_settings)
+    
     def __init__(self):
         """
         Constructor
         """
-        super(PrintServiceForm, self).__init__(Registry().get('main_window'), QtCore.Qt.WindowSystemMenuHint |
-                                               QtCore.Qt.WindowTitleHint | QtCore.Qt.WindowCloseButtonHint)
-        self.printer = QtPrintSupport.QPrinter()
-        self.print_dialog = QtPrintSupport.QPrintDialog(self.printer, self)
-        self.document = QtGui.QTextDocument()
-        self.zoom = 0
-        self.setup_ui(self)
-        # Load the settings for the dialog.
-        self.settings.beginGroup('advanced')
-        self.slide_text_check_box.setChecked(self.settings.value('print slide text'))
-        self.page_break_after_text.setChecked(self.settings.value('add page break'))
-        if not self.slide_text_check_box.isChecked():
-            self.page_break_after_text.setDisabled(True)
-        self.meta_data_check_box.setChecked(self.settings.value('print file meta data'))
-        self.notes_check_box.setChecked(self.settings.value('print notes'))
-        self.zoom_combo_box.setCurrentIndex(self.settings.value('display size'))
-        self.settings.endGroup()
-        # Signals
-        self.print_button.triggered.connect(self.print_service_order)
-        self.zoom_out_button.clicked.connect(self.zoom_out)
-        self.zoom_in_button.clicked.connect(self.zoom_in)
-        self.zoom_original_button.clicked.connect(self.zoom_original)
-        self.preview_widget.paintRequested.connect(self.paint_requested)
-        self.zoom_combo_box.currentIndexChanged.connect(self.display_size_changed)
-        self.plain_copy.triggered.connect(self.copy_text)
-        self.html_copy.triggered.connect(self.copy_html_text)
-        self.slide_text_check_box.stateChanged.connect(self.on_slide_text_check_box_changed)
-        self.update_preview_text()
+        super(PrintServiceForm, self).__init__(Registry().get('main_window'),
+                                                     QtCore.Qt.WindowSystemMenuHint |
+                                                     QtCore.Qt.WindowTitleHint |
+                                                     QtCore.Qt.WindowCloseButtonHint)
+        self.setWindowTitle(translate('OpenLP.PrintServiceForm', 'Service Runsheet'))
+        self.setWindowIcon(UiIcons().print)
+        self.resize(1000, 700)
+        
+        # Register default settings if not already done
+        self.register_default_settings()
+        
+        # Current template and options
+        self.current_template = ServiceTemplate.PROFESSIONAL
+        self.custom_data = {}  # Store custom assignments and notes
+        self.columns = []  # Store column configuration
+        self.column_checkboxes = {}  # Store column checkboxes
+        self.column_widgets = []  # Store column row widgets for cleanup
+        self.setup_ui()
+        self.setup_web_channel()
+        self.load_settings()
+        self.connect_signals()
+        self.load_existing_metadata()
+        self.update_preview()
 
-    def toggle_options(self, checked):
+    def setup_ui(self):
         """
-        Toggle various options
+        Set up the user interface
         """
-        self.options_widget.setVisible(checked)
+        # Main layout
+        self.main_layout = QtWidgets.QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # Toolbar
+        self.toolbar = QtWidgets.QToolBar(self)
+        self.toolbar.setIconSize(QtCore.QSize(22, 22))
+        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        
+        # Print button
+        self.print_action = self.toolbar.addAction(UiIcons().print, 
+                                                  translate('OpenLP.PrintServiceForm', 'Print'))
+        
+        # Export PDF button
+        self.export_pdf_action = self.toolbar.addAction(UiIcons().save,
+                                                       translate('OpenLP.PrintServiceForm', 'Export PDF'))
+        
+        self.toolbar.addSeparator()
+        
+        # Clear custom data button
+        self.clear_action = self.toolbar.addAction(UiIcons().delete,
+                                                  translate('OpenLP.PrintServiceForm', 'Clear Edits'))
+        self.clear_action.setToolTip(translate('OpenLP.PrintServiceForm', 'Clear all custom assignments and notes'))
+        
+        # Template selector
+        self.toolbar.addSeparator()
+        self.template_label = QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Template:'))
+        self.toolbar.addWidget(self.template_label)
+        
+        self.template_combo = QtWidgets.QComboBox()
+        # Populate from registry
+        for tmpl in TemplateRegistry.all():
+            self.template_combo.addItem(tmpl.label, tmpl.id)
+        self.toolbar.addWidget(self.template_combo)
+        
+        # Options button
+        self.toolbar.addSeparator()
+        self.options_button = QtWidgets.QToolButton()
+        self.options_button.setText(translate('OpenLP.PrintServiceForm', 'Options'))
+        self.options_button.setIcon(UiIcons().settings)
+        self.options_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self.options_button.setCheckable(True)
+        self.toolbar.addWidget(self.options_button)
+
+        # Insert header mode
+        self.toolbar.addSeparator()
+        self.insert_header_action = self.toolbar.addAction(UiIcons().add,
+                                                           translate('OpenLP.PrintServiceForm', 'Insert Header'))
+        self.insert_header_action.setCheckable(True)
+
+        self.main_layout.addWidget(self.toolbar)
+
+        # Splitter for preview and options
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.splitter.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        
+        # WebView for preview
+        self.webview = WebEngineView(self)
+        self.webview.setMinimumWidth(600)
+        self.webview.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        # Set background color for better paper preview
+        self.webview.setStyleSheet("QWidget { background-color: #e5e5e5; }")
+        self.splitter.addWidget(self.webview)
+        
+        # Options panel
+        self.options_widget = QtWidgets.QWidget()
+        self.options_widget.setMaximumWidth(300)
+        self.options_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
+        self.options_widget.hide()
+        self.setup_options_panel()
+        self.splitter.addWidget(self.options_widget)
+        
+        self.main_layout.addWidget(self.splitter, 1)  # Add stretch factor of 1
+        
+        # Set splitter proportions - webview gets most space
+        self.splitter.setStretchFactor(0, 1)  # webview
+        self.splitter.setStretchFactor(1, 0)  # options panel
+        
+        # Status bar
+        self.status_bar = QtWidgets.QStatusBar()
+        self.main_layout.addWidget(self.status_bar)
+
+    def setup_options_panel(self):
+        """
+        Set up the options panel
+        """
+        layout = QtWidgets.QVBoxLayout(self.options_widget)
+        
+        # Service title
+        layout.addWidget(QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Service Title:')))
+        self.title_edit = QtWidgets.QLineEdit()
+        self.title_edit.setText(translate('OpenLP.PrintServiceForm', 'Service Runsheet'))
+        layout.addWidget(self.title_edit)
+        
+        # Service date
+        layout.addWidget(QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Service Date:')))
+        self.date_edit = QtWidgets.QDateEdit()
+        self.date_edit.setDate(QtCore.QDate.currentDate())
+        self.date_edit.setCalendarPopup(True)
+        layout.addWidget(self.date_edit)
+        
+        # Service time
+        layout.addWidget(QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Service Time:')))
+        self.time_edit = QtWidgets.QTimeEdit()
+        self.time_edit.setTime(QtCore.QTime(10, 0))
+        layout.addWidget(self.time_edit)
+        
+        # Page orientation
+        layout.addWidget(QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Page Orientation:')))
+        self.orientation_combo = QtWidgets.QComboBox()
+        self.orientation_combo.addItem(translate('OpenLP.PrintServiceForm', 'Portrait'), 'portrait')
+        self.orientation_combo.addItem(translate('OpenLP.PrintServiceForm', 'Landscape'), 'landscape')
+        self.orientation_combo.setCurrentIndex(1)  # Default to landscape
+        layout.addWidget(self.orientation_combo)
+        
+        # Options group
+        options_group = QtWidgets.QGroupBox(translate('OpenLP.PrintServiceForm', 'Include'))
+        options_layout = QtWidgets.QVBoxLayout(options_group)
+        
+        self.include_times_check = QtWidgets.QCheckBox(translate('OpenLP.PrintServiceForm', 'Times and durations'))
+        self.include_times_check.setChecked(True)
+        options_layout.addWidget(self.include_times_check)
+        
+        self.include_notes_check = QtWidgets.QCheckBox(translate('OpenLP.PrintServiceForm', 'Service item notes'))
+        self.include_notes_check.setChecked(True)
+        options_layout.addWidget(self.include_notes_check)
+        
+        self.include_slides_check = QtWidgets.QCheckBox(translate('OpenLP.PrintServiceForm', 'Slide text'))
+        options_layout.addWidget(self.include_slides_check)
+        
+        self.include_media_info_check = QtWidgets.QCheckBox(translate('OpenLP.PrintServiceForm', 'Media information'))
+        self.include_media_info_check.setChecked(True)
+        options_layout.addWidget(self.include_media_info_check)
+        
+        layout.addWidget(options_group)
+
+        # Hint for adding section headers via the preview
+        self.hint_label = QtWidgets.QLabel(
+            translate('OpenLP.PrintServiceForm', 'Tip: Right-click any row in the preview to add a section header before it.'))
+        self.hint_label.setWordWrap(True)
+        font = self.hint_label.font()
+        font.setPointSize(max(font.pointSize() - 1, 7))
+        self.hint_label.setFont(font)
+        self.hint_label.setStyleSheet('color: #666;')
+        layout.addWidget(self.hint_label)
+        
+        # Columns management
+        columns_group = QtWidgets.QGroupBox(translate('OpenLP.PrintServiceForm', 'Columns'))
+        columns_layout = QtWidgets.QVBoxLayout(columns_group)
+        
+        # Add new column input
+        add_layout = QtWidgets.QHBoxLayout()
+        self.new_column_edit = QtWidgets.QLineEdit()
+        self.new_column_edit.setPlaceholderText(translate('OpenLP.PrintServiceForm', 'Add column...'))
+        self.add_column_btn = QtWidgets.QPushButton('+')
+        self.add_column_btn.setMaximumWidth(30)
+        
+        add_layout.addWidget(self.new_column_edit)
+        add_layout.addWidget(self.add_column_btn)
+        columns_layout.addLayout(add_layout)
+        
+        layout.addWidget(columns_group)
+        
+        # Connect signals
+        self.new_column_edit.returnPressed.connect(self.add_simple_column)
+        self.add_column_btn.clicked.connect(self.add_simple_column)
+        
+        # Footer notes
+        layout.addWidget(QtWidgets.QLabel(translate('OpenLP.PrintServiceForm', 'Footer Notes:')))
+        self.footer_edit = QtWidgets.QTextEdit()
+        self.footer_edit.setMaximumHeight(100)
+        layout.addWidget(self.footer_edit)
+        
+        layout.addStretch()
+
+    def update_column_checkboxes(self):
+        """Update column checkboxes when columns change"""
+        if not hasattr(self, 'column_checkboxes'):
+            return
+        
+        if not hasattr(self, 'column_widgets'):
+            self.column_widgets = []
+            
+        # Clear existing checkboxes and row widgets
+        for checkbox in self.column_checkboxes.values():
+            checkbox.setParent(None)
+        self.column_checkboxes.clear()
+        
+        for widget in self.column_widgets:
+            widget.setParent(None)
+        self.column_widgets.clear()
+        
+        # Find the columns group
+        for widget in self.options_widget.findChildren(QtWidgets.QGroupBox):
+            if widget.title() == translate('OpenLP.PrintServiceForm', 'Columns'):
+                layout = widget.layout()
+                
+                # Only show columns that are currently enabled or available to be added back
+                enabled_columns = [col for col in self.columns if col.get('removable', True)]
+                
+                # For columns that were removed, show them as available options (unchecked)
+                default_removable = [col for col in DefaultColumns.get_default_columns() if col.get('removable', True)]
+                removed_defaults = [col for col in default_removable if not any(ec['id'] == col['id'] for ec in enabled_columns)]
+                
+                # Show enabled columns + removed defaults (so they can be re-added)
+                all_possible_columns = enabled_columns + removed_defaults
+                
+                insert_index = 0
+                for column in all_possible_columns:
+                    if column.get('removable', True):
+                        # Create horizontal layout for checkbox + remove button
+                        row_layout = QtWidgets.QHBoxLayout()
+                        row_layout.setContentsMargins(0, 0, 0, 0)
+                        
+                        checkbox = QtWidgets.QCheckBox(column['name'])
+                        is_enabled = any(col['id'] == column['id'] for col in enabled_columns)
+                        checkbox.setChecked(is_enabled)
+                        checkbox.toggled.connect(lambda checked, col_data=column: self.on_column_toggle(col_data, checked))
+                        self.column_checkboxes[column['id']] = checkbox
+                        
+                        row_layout.addWidget(checkbox)
+                        
+                        # Add X button for all removable columns
+                        remove_btn = QtWidgets.QPushButton('×')
+                        remove_btn.setMaximumSize(20, 20)
+                        remove_btn.setStyleSheet("QPushButton { color: red; font-weight: bold; }")
+                        remove_btn.clicked.connect(lambda _, col_data=column: self.remove_column_permanently(col_data))
+                        row_layout.addWidget(remove_btn)
+                        
+                        row_widget = QtWidgets.QWidget()
+                        row_widget.setLayout(row_layout)
+                        layout.insertWidget(insert_index, row_widget)
+                        
+                        # Track the widget for cleanup
+                        self.column_widgets.append(row_widget)
+                        insert_index += 1
+                break
+
+    def on_column_toggle(self, column_data, checked):
+        """Handle column enable/disable"""
         if checked:
-            left = self.options_button.pos().x()
-            top = self.toolbar.height()
-            self.options_widget.move(left, top)
-            self.title_line_edit.setFocus()
+            # Add column if not present
+            if not any(col['id'] == column_data['id'] for col in self.columns):
+                self.columns.append(column_data)
         else:
-            self.save_options()
-        self.update_preview_text()
+            # Remove column
+            self.columns = [col for col in self.columns if col['id'] != column_data['id']]
+        
+        self.save_settings()
+        self.save_service_metadata()
+        self.update_preview()
 
-    def update_preview_text(self):
-        """
-        Creates the html text and updates the html of *self.document*.
-        """
-        html_data = self._add_element('html')
-        self._add_element('head', parent=html_data)
-        self._add_element('title', self.title_line_edit.text(), html_data.head)
-        css_path = AppLocation.get_data_path() / 'serviceprint' / 'service_print.css'
-        custom_css = get_text_file_string(css_path)
-        if not custom_css:
-            custom_css = DEFAULT_CSS
-        self._add_element('style', custom_css, html_data.head, attribute=('type', 'text/css'))
-        self._add_element('body', parent=html_data)
-        self._add_element('h1', html.escape(self.title_line_edit.text()), html_data.body, class_id='serviceTitle')
-        for index, item in enumerate(self.service_manager.service_items):
-            self._add_preview_item(html_data.body, item['service_item'], index)
-        if not self.show_chords_check_box.isChecked():
-            # Remove chord row and spacing span elements when not printing chords
-            for chord_row in html_data.find_class('chordrow'):
-                chord_row.drop_tree()
-            for spacing_span in html_data.find_class('chordspacing'):
-                spacing_span.drop_tree()
-        # Add the custom service notes:
-        if self.footer_text_edit.toPlainText():
-            div = self._add_element('div', parent=html_data.body, class_id='customNotes')
-            self._add_element(
-                'span', translate('OpenLP.ServiceManager', 'Service Notes: '), div, class_id='customNotesTitle')
-            self._add_element('span', html.escape(self.footer_text_edit.toPlainText()), div, class_id='customNotesText')
-        self.document.setHtml(lxml.html.tostring(html_data).decode())
-        self.preview_widget.updatePreview()
+    def remove_column_permanently(self, column_data):
+        """Permanently remove any column"""
+        # Remove from active columns
+        self.columns = [col for col in self.columns if col['id'] != column_data['id']]
+        
+        # Update UI and save
+        self.update_column_checkboxes()
+        self.save_settings()
+        self.save_service_metadata()
+        self.update_preview()
 
-    def _add_preview_item(self, body, item, index):
-        """
-        Add a preview item
-        """
-        div = self._add_element('div', class_id='item', parent=body)
-        # Add the title of the service item.
-        item_title = self._add_element('h2', parent=div, class_id='itemTitle')
-        self._add_element('span', '&nbsp;' + html.escape(item.get_display_title()), item_title)
-        if self.slide_text_check_box.isChecked():
-            # Add the text of the service item.
-            if item.is_text():
-                verse_def = None
-                verse_html = None
-                for slide in item.print_slides:
-                    slide_text = slide['text'].replace('\n', '<br>')
-                    if not verse_def or verse_def != slide['verse'] or verse_html == slide_text:
-                        text_div = self._add_element('div', parent=div, class_id='itemText')
-                    elif 'chordspacing' not in slide_text:
-                        self._add_element('br', parent=text_div)
-                    self._add_element('span', slide_text, text_div)
-                    verse_def = slide['verse']
-                    verse_html = slide_text
-                # Break the page before the div element.
-                if index != 0 and self.page_break_after_text.isChecked():
-                    div.set('class', 'item newPage')
-            # Add the image names of the service item.
-            elif item.is_image():
-                ol = self._add_element('ol', parent=div, class_id='imageList')
-                for slide in range(len(item.get_frames())):
-                    self._add_element('li', item.get_frame_title(slide), ol)
-            # add footer
-            footer_html = item.footer_html
-            footer_html = footer_html.partition('<br>')[2]
-            if footer_html:
-                footer_html = html.escape(footer_html.replace('<br>', '\n'))
-                self._add_element('div', footer_html.replace('\n', '<br>'), parent=div, class_id='itemFooter')
-        # Add service items' notes.
-        if self.notes_check_box.isChecked():
-            if item.notes:
-                p = self._add_element('div', class_id='itemNotes', parent=div)
-                self._add_element('span', translate('OpenLP.ServiceManager', 'Notes: '), p, class_id='itemNotesTitle')
-                self._add_element('span', html.escape(item.notes).replace('\n', '<br>'), p, class_id='itemNotesText')
-        # Add play length of media files.
-        if item.is_media() and self.meta_data_check_box.isChecked():
-            tme = item.media_length
-            if item.end_time > 0:
-                tme = item.end_time - item.start_time
-            title = self._add_element('div', class_id='media', parent=div)
-            self._add_element(
-                'span', translate('OpenLP.ServiceManager', 'Playing time: '), title, class_id='mediaTitle')
-            self._add_element('span', str(datetime.timedelta(seconds=tme)), title, class_id='mediaText')
-
-    def _add_element(self, tag, text=None, parent=None, class_id=None, attribute=None):
-        """
-        Creates a html element. If ``text`` is given, the element's text will set and if a ``parent`` is given,
-        the element is appended.
-
-        :param tag: The html tag, e. g. ``'span'``. Defaults to ``None``.
-        :param text: The text for the tag. Defaults to ``None``.
-        :param parent: The parent element. Defaults to ``None``.
-        :param class_id: Value for the class attribute
-        :param attribute: Tuple name/value pair to add as an optional attribute
-        """
-        if text is not None:
-            element = lxml.html.fragment_fromstring(str(text), create_parent=tag)
-        else:
-            element = lxml.html.Element(tag)
-        if parent is not None:
-            parent.append(element)
-        if class_id is not None:
-            element.set('class', class_id)
-        if attribute is not None:
-            element.set(attribute[0], attribute[1])
-        return element
-
-    def paint_requested(self, printer):
-        """
-        Paint the preview of the *self.document*.
-
-        ``printer``
-            A *QPrinter* object.
-        """
-        self.document.print_(printer)
-
-    def display_size_changed(self, display):
-        """
-        The Zoom Combo box has changed so set up the size.
-        """
-        if display == ZoomSize.Page:
-            self.preview_widget.fitInView()
-        elif display == ZoomSize.Width:
-            self.preview_widget.fitToWidth()
-        elif display == ZoomSize.OneHundred:
-            self.preview_widget.fitToWidth()
-            self.preview_widget.zoomIn(1)
-        elif display == ZoomSize.SeventyFive:
-            self.preview_widget.fitToWidth()
-            self.preview_widget.zoomIn(0.75)
-        elif display == ZoomSize.Fifty:
-            self.preview_widget.fitToWidth()
-            self.preview_widget.zoomIn(0.5)
-        elif display == ZoomSize.TwentyFive:
-            self.preview_widget.fitToWidth()
-            self.preview_widget.zoomIn(0.25)
-        self.settings.beginGroup('advanced')
-        self.settings.setValue('display size', display)
-        self.settings.endGroup()
-
-    def copy_text(self):
-        """
-        Copies the display text to the clipboard as plain text
-        """
-        self.update_song_usage()
-        cursor = QtGui.QTextCursor(self.document)
-        cursor.select(QtGui.QTextCursor.SelectionType.Document)
-        clipboard_text = cursor.selectedText()
-        # We now have the unprocessed unicode service text in the cursor
-        # So we replace u2028 with \n and u2029 with \n\n and a few others
-        clipboard_text = clipboard_text.replace('\u2028', '\n')
-        clipboard_text = clipboard_text.replace('\u2029', '\n\n')
-        clipboard_text = clipboard_text.replace('\u2018', '\'')
-        clipboard_text = clipboard_text.replace('\u2019', '\'')
-        clipboard_text = clipboard_text.replace('\u201c', '"')
-        clipboard_text = clipboard_text.replace('\u201d', '"')
-        clipboard_text = clipboard_text.replace('\u2026', '...')
-        clipboard_text = clipboard_text.replace('\u2013', '-')
-        clipboard_text = clipboard_text.replace('\u2014', '-')
-        # remove the icon from the text
-        clipboard_text = clipboard_text.replace('\ufffc\xa0', '')
-        # and put it all on the clipboard
-        self.main_window.clipboard.setText(clipboard_text)
-
-    def copy_html_text(self):
-        """
-        Copies the display text to the clipboard as Html
-        """
-        self.update_song_usage()
-        self.main_window.clipboard.setText(self.document.toHtml())
-
-    def print_service_order(self):
-        """
-        Called, when the *print_button* is clicked. Opens the *print_dialog*.
-        """
-        if not self.print_dialog.exec():
+    def add_simple_column(self):
+        """Add a new column from the text input"""
+        name = self.new_column_edit.text().strip()
+        if not name:
             return
-        self.update_song_usage()
-        # Print the document.
-        self.document.print_(self.printer)
-
-    def zoom_in(self):
-        """
-        Called when *zoom_in_button* is clicked.
-        """
-        self.preview_widget.zoomIn()
-        self.zoom -= 0.1
-
-    def zoom_out(self):
-        """
-        Called when *zoom_out_button* is clicked.
-        """
-        self.preview_widget.zoomOut()
-        self.zoom += 0.1
-
-    def zoom_original(self):
-        """
-        Called when *zoom_out_button* is clicked.
-        """
-        self.preview_widget.zoomIn(1 + self.zoom)
-        self.zoom = 0
-
-    def update_text_format(self, value):
-        """
-        Called when html copy check box is selected.
-        """
-        if value == QtCore.Qt.Checked:
-            self.copyTextButton.setText(UiStrings().CopyToHtml)
-        else:
-            self.copyTextButton.setText(UiStrings().CopyToText)
-
-    def on_slide_text_check_box_changed(self, state):
-        """
-        Disable or enable the ``page_break_after_text`` checkbox  as it should only
-        be enabled, when the ``slide_text_check_box`` is enabled.
-        """
-        self.page_break_after_text.setDisabled(state == QtCore.Qt.Unchecked)
-
-    def save_options(self):
-        """
-        Save the settings and close the dialog.
-        """
-        # Save the settings for this dialog.
-        self.settings.beginGroup('advanced')
-        self.settings.setValue('print slide text', self.slide_text_check_box.isChecked())
-        self.settings.setValue('add page break', self.page_break_after_text.isChecked())
-        self.settings.setValue('print file meta data', self.meta_data_check_box.isChecked())
-        self.settings.setValue('print notes', self.notes_check_box.isChecked())
-        self.settings.endGroup()
-
-    def update_song_usage(self):
-        """
-        Update the song usage
-        """
-        # Only continue when we include the song's text.
-        if not self.slide_text_check_box.isChecked():
+        
+        column_id = name.lower().replace(' ', '_')
+        if any(col['id'] == column_id for col in self.columns):
             return
-        for item in self.service_manager.service_items:
-            # Trigger Audit requests
-            Registry().register_function('print_service_started', [item['service_item']])
+        
+        new_column = {
+            'id': column_id,
+            'name': name,
+            'type': ColumnType.EDITABLE,
+            'removable': True
+        }
+        
+        self.columns.append(new_column)
+        self.new_column_edit.clear()
+        self.update_column_checkboxes()
+        self.save_settings()
+        self.save_service_metadata()
+        self.update_preview()
+
+    def setup_web_channel(self):
+        self.bridge = WebChannelBridge()
+        self.channel = QWebChannel()
+        self.channel.registerObject("bridge", self.bridge)
+        self.webview.page().setWebChannel(self.channel)
+        self.bridge.field_updated.connect(self.on_field_updated)
+        self.bridge.section_header_added.connect(self.on_section_header_added)
+    
+    def connect_signals(self):
+        # Action signals
+        signals = [
+            (self.print_action.triggered, self.print_service),
+            (self.export_pdf_action.triggered, self.export_pdf),
+            (self.clear_action.triggered, self.clear_custom_data),
+            (self.template_combo.currentIndexChanged, self.on_template_changed),
+            (self.options_button.toggled, self.toggle_options),
+            (self.insert_header_action.toggled, self.toggle_insert_mode),
+        ]
+        
+        # Preview update signals
+        preview_widgets = [
+            self.title_edit.textChanged, self.date_edit.dateChanged, self.time_edit.timeChanged,
+            self.orientation_combo.currentIndexChanged,
+            self.include_times_check.toggled, self.include_notes_check.toggled,
+            self.include_slides_check.toggled, self.include_media_info_check.toggled,
+            self.footer_edit.textChanged
+        ]
+        
+        for signal, slot in signals:
+            signal.connect(slot)
+        for signal in preview_widgets:
+            signal.connect(self.update_preview)
+            signal.connect(self.save_service_metadata)  # Save to service file
+
+    def load_settings(self):
+        s = self.settings
+        s.beginGroup('webview_print_service')
+        
+        # Simple widgets
+        widgets = [
+            ('title', self.title_edit, 'setText', 'text'),
+            ('include_times', self.include_times_check, 'setChecked', 'isChecked'),
+            ('include_notes', self.include_notes_check, 'setChecked', 'isChecked'),
+            ('include_slides', self.include_slides_check, 'setChecked', 'isChecked'),
+            ('include_media_info', self.include_media_info_check, 'setChecked', 'isChecked'),
+        ]
+        
+        # Combo widgets (need findData)
+        combos = [
+            ('template', self.template_combo),
+            ('orientation', self.orientation_combo),
+        ]
+        
+        for key, widget, setter, _ in widgets:
+            getattr(widget, setter)(s.value(key))
+            
+        for key, combo in combos:
+            idx = combo.findData(s.value(key))
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        
+        # Load columns configuration
+        self.columns = s.value('columns')
+        if not self.columns:  # Fallback if empty or None
+            self.columns = DefaultColumns.get_default_columns()
+        
+        # Update column checkboxes after loading
+        self.update_column_checkboxes()
+                
+        s.endGroup()
+
+    def save_settings(self):
+        s = self.settings
+        s.beginGroup('webview_print_service')
+        
+        settings_map = {
+            'title': self.title_edit.text(),
+            'template': self.template_combo.currentData(),
+            'orientation': self.orientation_combo.currentData(),
+            'include_times': self.include_times_check.isChecked(),
+            'include_notes': self.include_notes_check.isChecked(),
+            'include_slides': self.include_slides_check.isChecked(),
+            'include_media_info': self.include_media_info_check.isChecked(),
+            'columns': self.columns,
+        }
+        
+        for key, value in settings_map.items():
+            s.setValue(key, value)
+        s.endGroup()
+
+    def on_template_changed(self):
+        """
+        Handle template selection change
+        """
+        self.current_template = self.template_combo.currentData()
+        self.update_preview()
+
+    def toggle_options(self, visible):
+        """
+        Toggle options panel visibility
+        """
+        self.options_widget.setVisible(visible)
+    
+    def on_field_updated(self, item_id, field, value):
+        if item_id not in self.custom_data:
+            self.custom_data[item_id] = {}
+        if field == 'section_header' and (value is None or str(value).strip() == ''):
+            # Remove header when text cleared
+            if 'section_header' in self.custom_data[item_id]:
+                del self.custom_data[item_id]['section_header']
+            # Also clear in metadata
+            self.save_item_metadata(item_id, 'section_header', '')
+        else:
+            self.custom_data[item_id][field] = value
+        
+        # Save to service item metadata immediately
+        self.save_item_metadata(item_id, field, value)
+        
+        if field in ('duration', 'section_header'):
+            self.update_preview()
+            if field == 'section_header':
+                # Exit insert mode in the toolbar if it was enabled
+                try:
+                    self.insert_header_action.setChecked(False)
+                except Exception:
+                    pass
+
+    def toggle_insert_mode(self, enabled):
+        # Toggle interactive insertion slots in the webview
+        js = f"setInsertMode({str(bool(enabled)).lower()})"
+        try:
+            self.webview.page().runJavaScript(js)
+        except Exception:
+            pass
+        
+    def on_section_header_added(self, after_item_id, header_text):
+        """
+        Handle section header addition
+        """
+        # Insert the header BEFORE the clicked item (supports top-of-list)
+        service_items = self.extract_service_data()
+        for i, item in enumerate(service_items):
+            current_id = item.get('id', f'item-{i}')
+            if current_id == after_item_id:
+                if current_id not in self.custom_data:
+                    self.custom_data[current_id] = {}
+                self.custom_data[current_id]['section_header'] = header_text
+
+                # Save to service item metadata
+                self.save_item_metadata(current_id, 'section_header', header_text)
+
+                self.update_preview()
+                # Exit insert mode after adding via picker
+                try:
+                    self.insert_header_action.setChecked(False)
+                except Exception:
+                    pass
+                break
+
+    def load_existing_metadata(self):
+        """
+        Load existing print service metadata from service items and service-level settings
+        """
+        self.custom_data = {}
+        for i, item_data in enumerate(self.service_manager.service_items):
+            service_item = item_data['service_item']
+            item_id = f'item-{i}'
+            
+            # Use the dedicated print_service_data field
+            if hasattr(service_item, 'print_service_data') and service_item.print_service_data:
+                self.custom_data[item_id] = service_item.print_service_data.copy()
+        
+        # Load service-level print settings
+        self.load_service_metadata()
+
+    def refresh_metadata(self):
+        """
+        Refresh metadata from service items - useful when service changes
+        """
+        self.load_existing_metadata()
+        self.update_preview()
+
+    def save_item_metadata(self, item_id, field, value):
+        """
+        Save custom field data to the corresponding service item
+        """
+        try:
+            item_index = int(item_id.split('-')[1])
+        except (IndexError, ValueError):
+            return
+        
+        if item_index >= len(self.service_manager.service_items):
+            return
+        
+        service_item = self.service_manager.service_items[item_index]['service_item']
+        # Remove header key when cleared, otherwise set value
+        if field == 'section_header' and (value is None or str(value).strip() == ''):
+            if 'section_header' in service_item.print_service_data:
+                del service_item.print_service_data['section_header']
+        else:
+            service_item.print_service_data[field] = value
+        self.service_manager.set_modified(True)
+
+    def load_service_metadata(self):
+        """
+        Load service-level print settings from service manager
+        """
+        if hasattr(self.service_manager, 'print_service_metadata') and self.service_manager.print_service_metadata:
+            metadata = self.service_manager.print_service_metadata
+            
+            # Load UI values from metadata
+            if 'title' in metadata:
+                self.title_edit.setText(metadata['title'])
+            if 'date' in metadata:
+                date = QtCore.QDate.fromString(metadata['date'], QtCore.Qt.ISODate)
+                if date.isValid():
+                    self.date_edit.setDate(date)
+            if 'time' in metadata:
+                time = QtCore.QTime.fromString(metadata['time'], QtCore.Qt.ISODate)
+                if time.isValid():
+                    self.time_edit.setTime(time)
+            if 'orientation' in metadata:
+                idx = self.orientation_combo.findData(metadata['orientation'])
+                if idx >= 0:
+                    self.orientation_combo.setCurrentIndex(idx)
+            if 'include_times' in metadata:
+                self.include_times_check.setChecked(metadata['include_times'])
+            if 'include_notes' in metadata:
+                self.include_notes_check.setChecked(metadata['include_notes'])
+            if 'include_slides' in metadata:
+                self.include_slides_check.setChecked(metadata['include_slides'])
+            if 'include_media_info' in metadata:
+                self.include_media_info_check.setChecked(metadata['include_media_info'])
+            
+            if 'footer_notes' in metadata:
+                self.footer_edit.setPlainText(metadata['footer_notes'])
+            if 'columns' in metadata:
+                self.columns = metadata['columns']
+                self.update_column_checkboxes()
+
+    def save_service_metadata(self):
+        """
+        Save service-level print settings to service manager
+        """
+        metadata = {
+            'title': self.title_edit.text(),
+            'date': self.date_edit.date().toString(QtCore.Qt.ISODate),
+            'time': self.time_edit.time().toString(QtCore.Qt.ISODate),
+            'orientation': self.orientation_combo.currentData(),
+            'include_times': self.include_times_check.isChecked(),
+            'include_notes': self.include_notes_check.isChecked(),
+            'include_slides': self.include_slides_check.isChecked(),
+            'include_media_info': self.include_media_info_check.isChecked(),
+            'footer_notes': self.footer_edit.toPlainText(),
+            'columns': self.columns,
+        }
+        
+        # Store in service manager
+        if not hasattr(self.service_manager, 'print_service_metadata'):
+            self.service_manager.print_service_metadata = {}
+        self.service_manager.print_service_metadata = metadata
+        self.service_manager.set_modified(True)
+
+    def clear_service_metadata(self):
+        """
+        Clear service-level print settings (useful for new services)
+        
+        This method should be called when:
+        - A new service is created
+        - Before loading a different service
+        
+        It resets all print service settings to defaults.
+        """
+        if hasattr(self.service_manager, 'print_service_metadata'):
+            self.service_manager.print_service_metadata = {}
+        
+        # Reset UI to defaults
+        self.title_edit.setText(translate('OpenLP.PrintServiceForm', 'Service Runsheet'))
+        self.date_edit.setDate(QtCore.QDate.currentDate())
+        self.time_edit.setTime(QtCore.QTime(10, 0))
+        self.footer_edit.clear()
+        
+        # Reset to default columns
+        self.columns = DefaultColumns.get_default_columns()
+        self.update_column_checkboxes()
+
+    def update_preview(self):
+        """
+        Update the webview preview with current service data and template
+        """
+        html_content = self.generate_service_html()
+        self.webview.setHtml(html_content)
+        
+        # Ensure scaling is applied after content loads
+        def apply_scaling():
+            self.webview.page().runJavaScript("if (typeof updateScale === 'function') { updateScale(); }")
+        
+        # Use a timer to ensure content is loaded
+        QtCore.QTimer.singleShot(100, apply_scaling)
+
+    def generate_service_html(self):
+        """
+        Generate the complete HTML for the service runsheet
+        """
+        service_data = self.extract_service_data()
+        template_html = self.get_template_html()
+        css = self.get_template_css()
+        
+        # Replace template variables
+        footer_section = get_footer_section(self.footer_edit.toPlainText())
+        table_headers = generate_table_headers(self.columns)
+        colgroup_html = generate_colgroup(self.columns)
+        
+        # Get orientation and generate dynamic CSS override
+        orientation_str = self.orientation_combo.currentData()
+        orientation_css = self.get_orientation_css(orientation_str)
+        
+        html_content = template_html.format(
+            title=html.escape(self.title_edit.text()),
+            date=self.date_edit.date().toString('dddd, MMMM dd, yyyy'),
+            time=self.time_edit.time().toString('h:mm AP'),
+            table_headers=table_headers,
+            service_items=self.render_service_items(service_data),
+            footer_notes=html.escape(self.footer_edit.toPlainText()),
+            footer_section=footer_section,
+            css=css + '\n' + orientation_css,
+            colgroup=colgroup_html,
+        )
+        
+        return html_content
+
+    def extract_service_data(self):
+        """
+        Extract service data from the service manager
+        """
+        service_items = []
+        current_time = self.time_edit.time()
+        
+        for i, item_data in enumerate(self.service_manager.service_items):
+            service_item = item_data['service_item']
+            item_id = f'item-{i}'
+            
+            # Calculate duration
+            item_custom = self.custom_data.get(item_id, {})
+            try:
+                duration_minutes = int(item_custom.get('duration', 0))
+            except (ValueError, TypeError):
+                duration_minutes = 0
+            
+            # Calculate default duration if not custom set
+            if not duration_minutes:
+                if service_item.is_media() and service_item.media_length > 0:
+                    duration_minutes = round((service_item.end_time - service_item.start_time) / 60 
+                                            if service_item.end_time > 0 
+                                            else service_item.media_length / 60)
+                elif service_item.is_text():
+                    duration_minutes = max(1, round(len(service_item.get_frames()) * 0.5))
+                else:
+                    duration_minutes = 2
+            
+            duration_minutes = max(1, duration_minutes)
+            
+            item_info = {
+                'id': item_id,
+                'title': service_item.get_display_title(),
+                'type': service_item.name,
+                'start_time': current_time.toString('h:mm'),
+                'duration': int(duration_minutes),
+                'end_time': current_time.addSecs(duration_minutes * 60).toString('h:mm'),
+                'notes': service_item.notes if self.include_notes_check.isChecked() else '',
+                'media_info': self.get_media_info(service_item) if self.include_media_info_check.isChecked() else '',
+                'slides': self.get_slide_text(service_item) if self.include_slides_check.isChecked() else []
+            }
+            
+            service_items.append(item_info)
+            current_time = current_time.addSecs(duration_minutes * 60)
+        
+        return service_items
+
+    def get_media_info(self, service_item):
+        """
+        Get media information for a service item
+        """
+        if service_item.is_media():
+            if service_item.media_length > 0:
+                return f"Duration: {datetime.timedelta(seconds=service_item.media_length)}"
+        elif service_item.is_image():
+            frame_count = len(service_item.get_frames())
+            return f"{frame_count} image{'s' if frame_count != 1 else ''}"
+        return ""
+
+    def get_slide_text(self, service_item):
+        """
+        Get slide text for a service item
+        """
+        if not service_item.is_text():
+            return []
+        
+        slides = []
+        for slide in service_item.print_slides:
+            slide_text = slide['text'].replace('\n', ' ').strip()
+            if slide_text and slide_text not in slides:
+                slides.append(slide_text)
+        return slides
+
+    def get_template_html(self):
+        # Use template-provided HTML if present, otherwise the common base
+        tmpl = TemplateRegistry.get(self.current_template)
+        return tmpl.html_template if tmpl and tmpl.html_template else get_base_template()
+
+    def get_template_css(self):
+        base = get_base_css()
+        tmpl = TemplateRegistry.get(self.current_template)
+        theme_css = tmpl.css if tmpl and tmpl.css else ''
+        return base + "\n" + theme_css
+    
+    def get_orientation_css(self, orientation):
+        """
+        Generate CSS that overrides the @page orientation rules
+        """
+        if orientation == 'portrait':
+            return """
+/* Portrait orientation override */
+@page {
+    size: A4 portrait !important;
+}
+
+@media print {
+    @page {
+        size: A4 portrait !important;
+    }
+}
+
+.paper-container {
+    width: 210mm !important;  /* A4 width portrait */
+}
+"""
+        else:  # landscape
+            return """
+/* Landscape orientation override */
+@page {
+    size: A4 landscape !important;
+}
+
+@media print {
+    @page {
+        size: A4 landscape !important;
+    }
+}
+
+.paper-container {
+    width: 297mm !important;  /* A4 width landscape */
+}
+"""
+
+    def render_service_items(self, service_items):
+        """
+        Render service items into HTML based on current template
+        """
+        include_times = self.include_times_check.isChecked()
+        include_notes = self.include_notes_check.isChecked()
+        include_slides = self.include_slides_check.isChecked()
+        include_media_info = self.include_media_info_check.isChecked()
+        
+        tmpl = TemplateRegistry.get(self.current_template)
+        renderer = (tmpl.render_items if tmpl and tmpl.render_items else render_table_items)
+        return renderer(
+            service_items,
+            include_times,
+            include_notes,
+            include_slides,
+            include_media_info,
+            self.custom_data,
+            self.columns,
+        )
+
+    def print_service(self):
+        """
+        Print the service runsheet
+        """
+        printer = QtPrintSupport.QPrinter(QtPrintSupport.QPrinter.HighResolution)
+        
+        # Get selected orientation
+        orientation_str = self.orientation_combo.currentData()
+        orientation = (QtGui.QPageLayout.Portrait if orientation_str == 'portrait' 
+                      else QtGui.QPageLayout.Landscape)
+        
+        printer.setPageOrientation(orientation)
+            
+        # Set page size to A4
+        printer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+        
+        # Set margins to match CSS
+        margins = QtCore.QMarginsF(20, 15, 20, 5)  # 2cm, 1.5cm, 2cm, 0.5cm in mm
+        printer.setPageMargins(margins, QtGui.QPageLayout.Millimeter)
+        
+        print_dialog = QtPrintSupport.QPrintDialog(printer, self)
+        
+        if print_dialog.exec_() == QtWidgets.QDialog.Accepted:
+            # Add print mode class to body for CSS
+            self.webview.page().runJavaScript("document.body.classList.add('print-mode')")
+            
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+                temp_pdf_path = temp_file.name
+            
+            # Create page layout
+            page_layout = QtGui.QPageLayout()
+            page_layout.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+            page_layout.setMargins(margins)
+            
+            page_layout.setOrientation(orientation)
+            
+            def on_pdf_finished():
+                try:
+                    # Remove print mode class
+                    self.webview.page().runJavaScript("document.body.classList.remove('print-mode')")
+                    
+                    self.status_bar.showMessage(
+                        translate('OpenLP.PrintServiceForm', 'PDF generated for printing. You can now print from your PDF viewer.'), 5000)
+                    
+                    # Open the PDF file with the default application
+                    import subprocess
+                    import platform
+                    
+                    try:
+                        if platform.system() == 'Darwin':  # macOS
+                            subprocess.run(['open', temp_pdf_path])
+                        elif platform.system() == 'Windows':
+                            os.startfile(temp_pdf_path)
+                        else:  # Linux
+                            subprocess.run(['xdg-open', temp_pdf_path])
+                    except Exception:
+                        # If we can't open it automatically, just show the path
+                        self.status_bar.showMessage(
+                            translate('OpenLP.PrintServiceForm', f'PDF saved to: {temp_pdf_path}'), 5000)
+                        
+                except Exception as e:
+                    self.status_bar.showMessage(
+                        translate('OpenLP.PrintServiceForm', 'Print preparation failed'), 3000)
+                finally:
+                    # Disconnect the signal
+                    try:
+                        self.webview.page().pdfPrintingFinished.disconnect(on_pdf_finished)
+                    except:
+                        pass
+            
+            # Connect signal and generate PDF with proper layout
+            self.webview.page().pdfPrintingFinished.connect(on_pdf_finished)
+            self.webview.page().printToPdf(temp_pdf_path, page_layout)
+
+    def export_pdf(self):
+        """
+        Export the service runsheet as PDF
+        """
+        from pathlib import Path
+        
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, 
+            translate('OpenLP.PrintServiceForm', 'Export Service Runsheet'),
+            str(Path.home() / f"Service_{self.date_edit.date().toString('yyyy-MM-dd')}.pdf"),
+            translate('OpenLP.PrintServiceForm', 'PDF files (*.pdf)')
+        )
+        
+        if file_path:
+            # Add print mode class to body for CSS
+            self.webview.page().runJavaScript("document.body.classList.add('print-mode')")
+            
+            # Get selected orientation
+            orientation_str = self.orientation_combo.currentData()
+            orientation = (QtGui.QPageLayout.Portrait if orientation_str == 'portrait' 
+                          else QtGui.QPageLayout.Landscape)
+            
+            # Create page layout with selected orientation
+            page_layout = QtGui.QPageLayout()
+            page_layout.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
+            
+            # Set margins to match CSS (1.5cm top, 2cm sides, 0.5cm bottom)
+            margins = QtCore.QMarginsF(20, 15, 20, 5)  # in mm
+            page_layout.setMargins(margins)
+            
+            page_layout.setOrientation(orientation)
+            
+            # Connect to the finished signal to show status
+            def on_pdf_finished():
+                try:
+                    # Remove print mode class
+                    self.webview.page().runJavaScript("document.body.classList.remove('print-mode')")
+                    
+                    self.status_bar.showMessage(
+                        translate('OpenLP.PrintServiceForm', f'PDF exported to {file_path}'), 3000)
+                except Exception:
+                    self.status_bar.showMessage(
+                        translate('OpenLP.PrintServiceForm', 'PDF export failed'), 3000)
+                # Disconnect the signal after use
+                try:
+                    self.webview.page().pdfPrintingFinished.disconnect(on_pdf_finished)
+                except:
+                    pass
+            
+            # Connect the signal and start the PDF generation with proper layout
+            self.webview.page().pdfPrintingFinished.connect(on_pdf_finished)
+            self.webview.page().printToPdf(file_path, page_layout)
+
+    def clear_custom_data(self):
+        """
+        Clear all custom assignments and notes
+        """
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            translate('OpenLP.PrintServiceForm', 'Clear Custom Data'),
+            translate('OpenLP.PrintServiceForm', 'Are you sure you want to clear all custom assignments and notes?'),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        
+        if reply == QtWidgets.QMessageBox.Yes:
+            # Clear local and service item data
+            self.custom_data.clear()
+            for item_data in self.service_manager.service_items:
+                item_data['service_item'].print_service_data.clear()
+            self.service_manager.set_modified(True)
+            
+            self.update_preview()
+            self.status_bar.showMessage(translate('OpenLP.PrintServiceForm', 'Custom data cleared'), 3000)
+    
+    def closeEvent(self, event):
+        """
+        Handle close event
+        """
+        self.save_settings()
+        self.save_service_metadata()
+        super().closeEvent(event)
