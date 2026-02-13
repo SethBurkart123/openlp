@@ -3,7 +3,7 @@
 # psycopg2 install required postgres installed, so skipped...
 flit_core
 tomli
-alembic
+alembic<1.14,>=1.7
 beautifulsoup4
 chardet
 distro

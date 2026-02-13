@@ -563,14 +563,21 @@ class Builder(object):
             self._print('Unable to locate an lrelease executable; skipping Qt translation compilation.')
             self._print('Install Qt tools or provide a lrelease binary on PATH to include .qm files.')
             return
+        if not _is_executable(lrelease_cmd):
+            self._print('Located %s but it is not executable; skipping Qt translation compilation.', lrelease_cmd)
+            return
         for filename in os.listdir(self.i18n_path):
             if filename.endswith('.ts'):
                 self._print_verbose('... %s', filename)
                 source_path = os.path.join(self.i18n_path, filename)
                 dest_path = os.path.join(self.dist_path, 'i18n', filename.replace('.ts', '.qm'))
                 lrelease_command = (lrelease_cmd, '-compress', source_path, '-qm', dest_path)
-                self._run_command(lrelease_command,
-                                  err_msg='Error running lrelease on %s' % source_path)
+                try:
+                    self._run_command(lrelease_command,
+                                      err_msg='Error running lrelease on %s' % source_path)
+                except FileNotFoundError:
+                    self._print('Failed to execute %s, skipping Qt translation compilation.', lrelease_cmd)
+                    break
         self._print('Copying Qt translation files...')
         source = self.get_qt_translations_path()
         if not os.path.exists(source):
