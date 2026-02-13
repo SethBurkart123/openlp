@@ -22,5 +22,6 @@ packaging
 PyMySQL
 pyenchant
 pysword
+tomli
 pytest
 pytest-runner
