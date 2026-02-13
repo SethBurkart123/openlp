@@ -1,12 +1,9 @@
 app-id: org.openlp.OpenLP
 runtime: org.kde.Platform
-runtime-version: '6.8'
+runtime-version: '5.15'
 sdk: org.kde.Sdk
-base: io.qt.PySide.BaseApp
-base-version: '6.8'
 command: openlp
-cleanup-commands:
-  - /app/cleanup-BaseApp.sh
+cleanup-commands: []
 finish-args:
   - --socket=x11
   - --share=ipc

@@ -4,6 +4,8 @@
 alembic
 beautifulsoup4
 chardet
+PyQt5
+PyQtWebEngine
 distro
 flask
 flask-cors

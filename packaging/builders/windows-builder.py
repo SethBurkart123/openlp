@@ -88,7 +88,7 @@ import glob
 import sys
 from distutils import dir_util
 from hashlib import md5
-from shutil import copy, move, rmtree
+from shutil import copy, move, rmtree, which
 
 from lxml.etree import ElementTree
 from lxml.builder import E, ElementMaker
@@ -289,6 +289,42 @@ class WindowsBuilder(Builder):
                            '-ext', 'WixFirewallExtension', '-sice:ICE60', '-sice:ICE61', 'OpenLP.wixobj',
                            '-o', msi_file],
                           'Error running WiX tool: light')
+
+    def _resolve_wix_executable(self, executable_name: str, configured_path: str | None) -> str | None:
+        """
+        Resolve a WiX executable from configuration or common install locations.
+        """
+        if configured_path and os.path.isfile(configured_path):
+            return configured_path
+
+        if detected := which(executable_name):
+            return detected
+
+        for program_dir in {self.program_files, self.program_files_x86, 'C:\\Program Files', 'C:\\Program Files (x86)'}:
+            if not program_dir:
+                continue
+            normalized_dir = os.path.abspath(program_dir)
+            for pattern in (
+                os.path.join(normalized_dir, 'WiX Toolset*', 'bin', executable_name),
+                os.path.join(normalized_dir, 'wixtoolset*', 'bin', executable_name),
+            ):
+                matches = glob.glob(pattern)
+                if matches:
+                    return matches[0]
+
+        return None
+
+    def setup_executables(self):
+        """
+        Resolve executables with fallback behavior for WiX paths in hosted CI images.
+        """
+        super().setup_executables()
+        resolved_candle = self._resolve_wix_executable('candle.exe', self.candle_exe)
+        if resolved_candle:
+            self.candle_exe = resolved_candle
+        resolved_light = self._resolve_wix_executable('light.exe', self.light_exe)
+        if resolved_light:
+            self.light_exe = resolved_light
 
     def _create_portableapp_structure(self):
         """

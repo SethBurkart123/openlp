@@ -323,11 +323,11 @@ jobs:
         sudo apt-get install -y flatpak flatpak-builder python3-requests python3-ruamel.yaml python3-lxml
         # Install requirements-parser for flatpak-pip-generator
         pip install requirements-parser
-        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         # TODO: Flatpak for PyQt5 - io.qt.PySide.BaseApp is PySide6-specific.
         # For a PyQt5-based flatpak, you may need a custom base or bundle PyQt5 via pip.
         # Using Qt5-era KDE platform for now.
-        sudo flatpak install -y flathub org.kde.Platform//5.15 org.kde.Sdk//5.15
+        flatpak install --user -y flathub org.kde.Platform//5.15 org.kde.Sdk//5.15
     
     - name: Install Python dependencies for resource generation
       run: |
