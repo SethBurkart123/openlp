@@ -1,6 +1,7 @@
 # Note:
 # PyQt* packages are provided by the PyQt BaseApp and are not listed here.
 # psycopg2 install required postgres installed, so skipped...
+tomli
 alembic
 beautifulsoup4
 chardet
@@ -22,6 +23,5 @@ packaging
 PyMySQL
 pyenchant
 pysword
-tomli
 pytest
 pytest-runner

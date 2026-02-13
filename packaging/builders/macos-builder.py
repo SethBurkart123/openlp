@@ -370,9 +370,16 @@ class MacOSBuilder(Builder):
         Return the path to Qt translation files on macOS
         """
         if self.args.use_qt5:
-            from PyQt5.QtCore import QCoreApplication
+            try:
+                from PyQt5.QtCore import QCoreApplication
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError('PyQt5 was requested with --use-qt5 but is not installed.') from e
         else:
-            from PySide6.QtCore import QCoreApplication
+            try:
+                from PySide6.QtCore import QCoreApplication
+            except ModuleNotFoundError:
+                # Legacy PyQt5-based setups run without --use-qt5 in older scripts.
+                from PyQt5.QtCore import QCoreApplication
         qt_library_path = QCoreApplication.libraryPaths()[0]
         return os.path.join(os.path.dirname(qt_library_path), 'translations')
 
