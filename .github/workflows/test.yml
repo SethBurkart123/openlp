@@ -42,8 +42,8 @@ jobs:
           libenchant-2-dev \
           libicu-dev \
           pkg-config \
-          libegl1-mesa \
-          libgl1-mesa-glx \
+          libegl1 \
+          libgl1 \
           libglib2.0-0 \
           libxkbcommon-x11-0 \
           libxcb-icccm4 \
@@ -95,7 +95,10 @@ jobs:
         # Install test-specific dependencies
         pip install pytest pytest-qt flake8
         # Try to install PyICU - use binary wheel if available, skip if it fails
-        pip install --only-binary=PyICU PyICU || echo "PyICU installation failed, continuing without it"
+        python -m pip install --only-binary=PyICU PyICU
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "PyICU installation failed, continuing without it."
+        }
 
     - name: Sync dependencies (Non-Windows)
       if: runner.os != 'Windows'

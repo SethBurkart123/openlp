@@ -32,6 +32,17 @@ except ImportError:
     pymediainfo_available = False
     pymediainfo_version = '0.0'
 
+    class _FallbackMediaInfo:
+        @staticmethod
+        def can_parse() -> bool:
+            return True
+
+        @staticmethod
+        def parse(*_args, **_kwargs):
+            return None
+
+    MediaInfo = _FallbackMediaInfo
+
 from PyQt5 import QtCore, QtWidgets
 
 from openlp.core.common.i18n import UiStrings, translate

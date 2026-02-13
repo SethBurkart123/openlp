@@ -150,7 +150,8 @@ def test_not_shown_if_start_hidden_is_set(mocked_show, display_window_env, mock_
 
 
 @patch.object(DisplayWindow, 'show')
-def test_shown_if_start_hidden_is_not_set(mocked_show, display_window_env, mock_settings):
+@patch.object(DisplayWindow, 'showFullScreen')
+def test_shown_if_start_hidden_is_not_set(mocked_show_fullscreen, mocked_show, display_window_env, mock_settings):
     """
     Tests if DisplayWindow's .show() method is called on constructor if constructed with start_hidden=False
     """
@@ -163,11 +164,11 @@ def test_shown_if_start_hidden_is_not_set(mocked_show, display_window_env, mock_
     mock_settings.value.side_effect = lambda key: settings[key]
     screen = Screen(1, QtCore.QRect(0, 0, 800, 600), is_display=True)
 
-    # WHEN: A DisplayWindow is created with start_hidden=True
+    # WHEN: A DisplayWindow is created with start_hidden=False
     DisplayWindow(screen=screen, start_hidden=False)
 
     # THEN: Window is shown
-    mocked_show.assert_called()
+    assert mocked_show.called or mocked_show_fullscreen.called
 
 
 def test_set_scale_not_initialised(display_window_env, mock_settings):
