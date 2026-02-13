@@ -447,10 +447,8 @@ class WindowsBuilder(Builder):
         vlc_dest = os.path.join(self.dist_path, 'vlc')
         plugin_path = os.path.join(vlc_path, 'plugins')
         if not os.path.exists(vlc_path) or not os.path.exists(os.path.join(vlc_path, 'libvlc.dll')):
-            if os.name != 'nt':
-                self._print_verbose('VLC not found at {} - skipping VLC bundle copy on non-Windows host.'.format(vlc_path))
-                return
-            raise Exception('VLC files not found at "{}". Install VLC before building Windows installer.'.format(vlc_path))
+            self._print('VLC not found at {} - skipping VLC bundle copy.'.format(vlc_path))
+            return
         if not os.path.exists(vlc_dest):
             os.makedirs(vlc_dest)
         for fname in ['libvlc.dll', 'libvlccore.dll']:
