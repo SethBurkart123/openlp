@@ -1,6 +1,7 @@
 # Note:
 # PyQt* packages are provided by the PyQt BaseApp and are not listed here.
 # psycopg2 install required postgres installed, so skipped...
+flit_core
 tomli
 alembic
 beautifulsoup4
