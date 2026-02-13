@@ -1,0 +1,34 @@
+[Format]
+Type=PortableApps.comFormat
+Version=3.0
+
+[Details]
+Name=OpenLP Portable
+AppID=OpenLPPortable
+Publisher=OpenLP.org
+Homepage=openlp.org
+Category=Utilities
+Description=Lyrics Projection
+Language=Multilingual
+
+[License]
+Shareable=true
+OpenSource=true
+Freeware=true
+CommercialUse=true
+
+[Version]
+DisplayVersion=%(display_version)s-%(arch)s
+PackageVersion=%(package_version)s
+
+[Control]
+Icons=1
+Start=OpenLPPortable.exe
+
+[Associations]
+FileType=osz
+FileType=oszl
+
+[FileTypeIcons]
+osz=app
+oszl=app

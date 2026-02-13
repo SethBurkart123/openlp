@@ -1,0 +1,26 @@
+# Note:
+# PySide* packages is missing due to being included in the base flatpak image
+# psycopg2 install required postgres installed, so skipped...
+alembic
+beautifulsoup4
+chardet
+distro
+flask
+flask-cors
+lxml
+Mako
+platformdirs
+PyICU
+QtAwesome
+qrcode
+requests
+SQLAlchemy
+waitress
+websockets
+QDarkStyle
+packaging
+PyMySQL
+pyenchant
+pysword
+pytest
+pytest-runner

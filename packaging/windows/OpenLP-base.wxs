@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+  xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <?define ProductName="OpenLP"?>
+  <?define ProductCode="*"?>
+  <?define ProductVersion="%(version)s"?>
+  <?define Manufacturer="OpenLP Developers"?>
+  <?define Description="Open Source Worship Presentation Software"?>
+  <?define Comments="OpenLP is open source under the GNU General Public License"?>
+  <?define UpgradeCode="8C5881AC-8F1E-4937-BB99-B823FABF18F0"?>
+  <?define Platform="%(platform)s"?>
+  <Product Name="$(var.ProductName)" Manufacturer="$(var.Manufacturer)" Id="$(var.ProductCode)"
+    UpgradeCode="$(var.UpgradeCode)" Language="1033" Version="$(var.ProductVersion)">
+    <Package Id="*" Keywords="Installer" Description="$(var.Description)" Comments="$(var.Comments)"
+      Manufacturer="$(var.Manufacturer)" InstallerVersion="400" Compressed="yes" Platform="$(var.Platform)"/>
+    <Condition Message="You need to be an administrator to install this product.">Privileged</Condition>
+    <Media Id="1" Cabinet="OpenLP.cab" EmbedCab="yes" CompressionLevel="high"/>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id="ARPPRODUCTICON" Value="OpenLP.ico" />
+    <UIRef Id="WixUI_Common" />
+    <UI Id="WixUI_OpenLP">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="WixUI_Mode" Value="InstallDir" />
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">NOT Installed</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish"  Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+      <Property Id="ARPNOMODIFY" Value="1" />
+    </UI>
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start $(var.ProductName)" />
+    <CustomAction Id="LaunchApplication" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" />
+    <WixVariable Id="WixUIDialogBmp" Value="%(dialog)s" />
+    <WixVariable Id="WixUIBannerBmp" Value="%(banner)s" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="%(progfilefolder)s">
+          <Directory Id="INSTALLDIR" Name="$(var.ProductName)"/>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" Name="Programs">
+        <Directory Id="ProgramMenuDir" Name="$(var.ProductName)">
+          <Component Id="ProgramMenuDir" Guid="{7AABE54C-5B03-4049-AA85-E18B787A19C7}">
+            <RemoveFolder Id="ProgramMenuDir" On="uninstall" />
+            <RegistryValue Root="HKCU" Key="Software\$(var.ProductName)\$(var.ProductName)" Type="string" Value="" KeyPath="yes" />
+            <util:InternetShortcut Id="OpenLPWebSite"
+              Name="$(var.ProductName) on the Web"
+              Target="http://openlp.org/"/>
+            <util:InternetShortcut Id="OpenLPForums"
+              Name="Get support for $(var.ProductName)"
+              Target="http://forums.openlp.org/"/>
+            <Shortcut Id="UninstallProduct"             
+              Name="Uninstall $(var.ProductName)"
+              Target="[%(systemfolder)s]msiexec.exe"
+              Arguments="/x [ProductCode]"
+              Description="Removes $(var.ProductName) from your computer" />
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+    <Feature Id="Complete" Title="Complete" Description="The $(var.ProductName) program files" Level="1"
+      ConfigurableDirectory="INSTALLDIR" AllowAdvertise="no" InstallDefault="local" Absent="disallow">
+      <ComponentRef Id="ProgramMenuDir"/>
+    </Feature>
+    <Icon Id="OpenLP.ico" SourceFile="OpenLP.ico"/>
+    <Icon Id="service_file.ico" SourceFile="service_file.ico"/>
+    <Upgrade Id="$(var.UpgradeCode)">
+      <UpgradeVersion Minimum="$(var.ProductVersion)" IncludeMinimum="no" OnlyDetect="yes"
+        Property="NEWPRODUCTFOUND" />
+      <UpgradeVersion Minimum="2.4.6" IncludeMinimum="yes" Maximum="$(var.ProductVersion)" IncludeMaximum="no"
+        Property="UPGRADEFOUND" />
+    </Upgrade>
+    <InstallExecuteSequence>
+      <Custom Action='PreventDowngrading' After='FindRelatedProducts'>NEWPRODUCTFOUND</Custom>
+      <RemoveExistingProducts Before='InstallInitialize' />
+    </InstallExecuteSequence>
+    <InstallUISequence>
+      <Custom Action='PreventDowngrading' After='FindRelatedProducts'>NEWPRODUCTFOUND</Custom>
+    </InstallUISequence>
+    <CustomAction Id='PreventDowngrading' Error='Newer version already installed' />
+    <Property Id='INNO_UNINSTALLER_64'>
+      <RegistrySearch Id='LocateInnoUninstaller64' Type='file' Root='HKLM'
+        Key='SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{AA7699FA-B2D2-43F4-8A70-D497D03C9485}_is1'
+        Name='UninstallString'>
+        <FileSearch Id='InnoUninstallerExe64' Name='unins000.exe' />
+      </RegistrySearch>
+    </Property>
+    <Property Id='INNO_UNINSTALLER_32'>
+      <RegistrySearch Id='LocateInnoUninstaller32' Type='file' Root='HKLM'
+        Key='SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{AA7699FA-B2D2-43F4-8A70-D497D03C9485}_is1'
+        Name='UninstallString'>
+        <FileSearch Id='InnoUninstallerExe32' Name='unins000.exe' />
+      </RegistrySearch>
+    </Property>
+    <CustomAction Id="ca.RemoveInno64" Property="INNO_UNINSTALLER_64" ExeCommand="/SILENT" Return="check" />
+    <CustomAction Id="ca.RemoveInno32" Property="INNO_UNINSTALLER_32" ExeCommand="/SILENT" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="ca.RemoveInno64" Before="InstallFiles">INNO_UNINSTALLER_64</Custom>
+      <Custom Action="ca.RemoveInno32" Before="InstallFiles"><![CDATA[INNO_UNINSTALLER_32 AND NOT INNO_UNINSTALLER_64]]></Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>
