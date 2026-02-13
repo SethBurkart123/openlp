@@ -3,11 +3,12 @@
 # psycopg2 install required postgres installed, so skipped...
 flit_core
 tomli
-alembic==1.12.1
 importlib-metadata
 importlib-resources
+alembic==1.12.1
 beautifulsoup4
 chardet
+python-vlc
 distro
 flask
 flask-cors
@@ -15,6 +16,7 @@ lxml
 Mako
 platformdirs
 PyICU
+pymediainfo
 QtAwesome
 qrcode
 requests
