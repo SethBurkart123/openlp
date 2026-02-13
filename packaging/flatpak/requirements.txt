@@ -1,11 +1,9 @@
 # Note:
-# PySide* packages is missing due to being included in the base flatpak image
+# PyQt* packages are provided by the PyQt BaseApp and are not listed here.
 # psycopg2 install required postgres installed, so skipped...
 alembic
 beautifulsoup4
 chardet
-PyQt5
-PyQtWebEngine
 distro
 flask
 flask-cors
