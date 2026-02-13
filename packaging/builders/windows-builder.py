@@ -266,6 +266,11 @@ class WindowsBuilder(Builder):
         """
         Run the WiX toolset to create an installer
         """
+        if os.name != 'nt':
+            self._print('Skipping WiX packaging on non-Windows host.')
+            return
+        if not self.candle_exe or not self.light_exe:
+            raise Exception('WiX tools were not found in PATH. Ensure WiX Toolset is installed on this host.')
         self._print('Running WiX tools...')
         if self.arch == 'x64':
             version = '{}-x64'.format(self.version)
@@ -440,6 +445,12 @@ class WindowsBuilder(Builder):
         from shutil import copytree
         vlc_path = os.path.join(self.program_files, 'VideoLAN', 'VLC')
         vlc_dest = os.path.join(self.dist_path, 'vlc')
+        plugin_path = os.path.join(vlc_path, 'plugins')
+        if not os.path.exists(vlc_path) or not os.path.exists(os.path.join(vlc_path, 'libvlc.dll')):
+            if os.name != 'nt':
+                self._print_verbose('VLC not found at {} - skipping VLC bundle copy on non-Windows host.'.format(vlc_path))
+                return
+            raise Exception('VLC files not found at "{}". Install VLC before building Windows installer.'.format(vlc_path))
         if not os.path.exists(vlc_dest):
             os.makedirs(vlc_dest)
         for fname in ['libvlc.dll', 'libvlccore.dll']:
@@ -448,7 +459,10 @@ class WindowsBuilder(Builder):
         if os.path.exists(os.path.join(vlc_dest, 'plugins')):
             rmtree(os.path.join(vlc_dest, 'plugins'))
         self._print_verbose('... copying VLC plugins')
-        copytree(os.path.join(vlc_path, 'plugins'), os.path.join(vlc_dest, 'plugins'))
+        if not os.path.exists(plugin_path):
+            self._print_verbose('VLC plugins not found at {} - skipping plugin copy.'.format(plugin_path))
+            return
+        copytree(plugin_path, os.path.join(vlc_dest, 'plugins'))
 
     def copy_extra_files(self):
         """

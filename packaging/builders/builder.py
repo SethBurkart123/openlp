@@ -573,6 +573,9 @@ class Builder(object):
                                   err_msg='Error running lrelease on %s' % source_path)
         self._print('Copying Qt translation files...')
         source = self.get_qt_translations_path()
+        if not os.path.exists(source):
+            self._print_verbose('Qt translation directory not found: {}. Skipping Qt runtime translations copy.'.format(source))
+            return
         for filename in os.listdir(source):
             if filename.startswith('qt') and filename.endswith('.qm'):
                 self._print_verbose('... %s', filename)
