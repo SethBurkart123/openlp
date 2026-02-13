@@ -110,7 +110,7 @@ jobs:
     - name: Build Windows installer (regular)
       run: |
         cd packaging/builders
-        python windows-builder.py --config ../windows/config.ini --skip-update
+        python windows-builder.py --config ../windows/config.ini --skip-update --use-qt5
       env:
         PYTHONPATH: packaging/builders
 
@@ -206,7 +206,7 @@ jobs:
     - name: Build macOS app
       run: |
         cd packaging/builders
-        python macos-builder.py --config ../macos/config.ini --skip-update
+        python macos-builder.py --config ../macos/config.ini --skip-update --use-qt5
       env:
         PYTHONPATH: packaging/builders
         PYENCHANT_LIBRARY_PATH: /opt/homebrew/lib/libenchant-2.2.dylib
@@ -291,7 +291,7 @@ jobs:
     - name: Build macOS app
       run: |
         cd packaging/builders
-        python macos-builder.py --config ../macos/config.ini --skip-update
+        python macos-builder.py --config ../macos/config.ini --skip-update --use-qt5
       env:
         PYTHONPATH: packaging/builders
         PYENCHANT_LIBRARY_PATH: /usr/local/lib/libenchant-2.2.dylib

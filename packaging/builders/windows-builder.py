@@ -363,6 +363,13 @@ class WindowsBuilder(Builder):
         """
         return 'Windows'
 
+    def run_pyinstaller(self):
+        """
+        Build the application via PyInstaller using Windows settings.
+        """
+        os.environ['OPENLP_BUILD_TARGET'] = 'windows'
+        super().run_pyinstaller()
+
     def get_config_defaults(self):
         """
         Build some default values for the config file
@@ -398,8 +405,14 @@ class WindowsBuilder(Builder):
         super().setup_system_paths()
         self.python_root = os.path.dirname(self.python)
         self.site_packages = os.path.join(self.python_root, 'Lib', 'site-packages')
-        self.program_files = os.environ['PROGRAMFILES']
-        self.program_files_x86 = os.getenv('PROGRAMFILES(x86)')
+        self.program_files = os.environ.get('PROGRAMFILES')
+        if not self.program_files:
+            self._print_verbose(
+                'PROGRAMFILES is not set; using temporary fallback path. Windows builds require this variable in a native '
+                'Windows environment.'
+            )
+            self.program_files = '/tmp'
+        self.program_files_x86 = os.environ.get('PROGRAMFILES(x86)', self.program_files)
         self._print_verbose('   {:.<20}: {}'.format('site packages: ', self.site_packages))
         self._print_verbose('   {:.<20}: {}'.format('program files: ', self.program_files))
         self._print_verbose('   {:.<20}: {}'.format('program files x86: ', self.program_files_x86))

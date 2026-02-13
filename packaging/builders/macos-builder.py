@@ -400,6 +400,13 @@ class MacOSBuilder(Builder):
         # self._code_sign()
         self._create_dmg()
 
+    def run_pyinstaller(self):
+        """
+        Build the application via PyInstaller.
+        """
+        os.environ['OPENLP_BUILD_TARGET'] = 'darwin'
+        super().run_pyinstaller()
+
 
 if __name__ == '__main__':
     MacOSBuilder().main()

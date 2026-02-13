@@ -335,6 +335,7 @@ class Builder(object):
         cmd = ['pyinstaller',
                '--clean',
                '--noconfirm',
+               '--specpath', os.path.join(self.work_path, 'build'),
                '--windowed',
                '--noupx',
                '--additional-hooks-dir', self.hooks_path,
