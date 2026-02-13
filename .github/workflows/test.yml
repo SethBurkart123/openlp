@@ -44,6 +44,7 @@ jobs:
           pkg-config \
           libegl1 \
           libgl1 \
+          libpulse-mainloop-glib0 \
           libglib2.0-0 \
           libxkbcommon-x11-0 \
           libxcb-icccm4 \
@@ -98,6 +99,7 @@ jobs:
         python -m pip install --only-binary=PyICU PyICU
         if ($LASTEXITCODE -ne 0) {
           Write-Host "PyICU installation failed, continuing without it."
+          $LASTEXITCODE = 0
         }
 
     - name: Sync dependencies (Non-Windows)
