@@ -570,7 +570,7 @@ class Builder(object):
                 dest_path = os.path.join(self.dist_path, 'i18n', filename.replace('.ts', '.qm'))
                 lrelease_command = (lrelease_cmd, '-compress', source_path, '-qm', dest_path)
                 self._run_command(lrelease_command,
-                                  err_msg='Error running lconvert on %s' % source_path)
+                                  err_msg='Error running lrelease on %s' % source_path)
         self._print('Copying Qt translation files...')
         source = self.get_qt_translations_path()
         for filename in os.listdir(source):
