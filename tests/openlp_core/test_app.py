@@ -381,7 +381,7 @@ def test_main_future_settings(mock_move: MagicMock, mock_get_path: MagicMock, mo
 
 
 if is_win():
-    p_prefix = 'C:'
+    p_prefix = Path.cwd().drive
 else:
     p_prefix = ''
 
