@@ -4,6 +4,8 @@
 flit_core
 tomli
 alembic==1.12.1
+importlib-metadata
+importlib-resources
 beautifulsoup4
 chardet
 distro
