@@ -61,6 +61,63 @@ def _which(program):
     return None
 
 
+def _is_executable(path: str) -> bool:
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def _candidate_paths(translation_path: str) -> list[str]:
+    """Return likely lrelease locations based on installed Qt package layout."""
+    base_path = os.path.dirname(translation_path)
+    return [
+        os.path.join(base_path, 'bin', 'lrelease'),
+        os.path.join(base_path, 'bin', 'lrelease-qt5'),
+        os.path.join(base_path, 'bin', 'qt5-lrelease'),
+    ]
+
+
+def _find_qlibraryinfo_lrelease() -> str | None:
+    """Try to resolve the lrelease executable from Qt metadata."""
+    for module_name in ['PyQt5', 'PyQt6', 'PySide6', 'PySide2']:
+        try:
+            qt_module = __import__(f'{module_name}.QtCore', fromlist=[''])
+            q_library_info = getattr(qt_module, 'QLibraryInfo')
+            binaries_path = None
+            if hasattr(q_library_info, 'BinariesPath'):
+                try:
+                    binaries_path = q_library_info.location(q_library_info.BinariesPath)
+                except Exception:
+                    pass
+            if binaries_path is None and hasattr(q_library_info, 'LibraryPath') and hasattr(q_library_info.LibraryPath,
+                                                                                         'BinariesPath'):
+                try:
+                    binaries_path = q_library_info.location(q_library_info.LibraryPath.BinariesPath)
+                except Exception:
+                    pass
+            if binaries_path and _is_executable(os.path.join(binaries_path, 'lrelease')):
+                return os.path.join(binaries_path, 'lrelease')
+        except Exception:
+            continue
+    return None
+
+
+def _find_lrelease(qt_translation_path: str) -> str | None:
+    """Return a usable lrelease executable path."""
+    for candidate in ('lrelease', 'lrelease-qt5', 'lrelease-qt6', 'qt5-lrelease', 'qt6-lrelease', 'pyside6-lrelease'):
+        path = _which(candidate)
+        if path:
+            return path
+
+    for candidate in _candidate_paths(qt_translation_path):
+        if _is_executable(candidate):
+            return candidate
+
+    qt_metadata_path = _find_qlibraryinfo_lrelease()
+    if qt_metadata_path:
+        return qt_metadata_path
+
+    return None
+
+
 class Builder(object):
     """
     A Generic class to base other operating system specific builders on
@@ -500,7 +557,12 @@ class Builder(object):
         self._print('Compiling translations...')
         if not os.path.exists(os.path.join(self.dist_path, 'i18n')):
             os.makedirs(os.path.join(self.dist_path, 'i18n'))
-        lrelease_cmd = 'lrelease' if self.args.use_qt5 else 'pyside6-lrelease'
+        qt_translation_path = self.get_qt_translations_path()
+        lrelease_cmd = _find_lrelease(qt_translation_path)
+        if not lrelease_cmd:
+            self._print('Unable to locate an lrelease executable; skipping Qt translation compilation.')
+            self._print('Install Qt tools or provide a lrelease binary on PATH to include .qm files.')
+            return
         for filename in os.listdir(self.i18n_path):
             if filename.endswith('.ts'):
                 self._print_verbose('... %s', filename)
