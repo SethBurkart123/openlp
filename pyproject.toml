@@ -79,6 +79,8 @@ dependencies = [
     "pyinstaller",
     "dmgbuild",
     "yt-dlp",
+    "python-vlc>=3.0.21203",
+    "pymediainfo>=7.0.1",
 ]
 
 [project.optional-dependencies]

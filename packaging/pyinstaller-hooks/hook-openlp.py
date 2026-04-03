@@ -31,4 +31,6 @@ hiddenimports = [
     'openlp.plugins.custom.customplugin',
     'openlp.plugins.songusage.songusageplugin',
     'openlp.plugins.alerts.alertsplugin',
+    'pymediainfo',
+    'vlc',
 ]
