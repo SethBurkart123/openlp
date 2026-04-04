@@ -303,7 +303,7 @@ class MCPPlugin(Plugin):
             import socket
             
             # Add localhost
-            urls.append(f'http://127.0.0.1:{port}/sse')
+            urls.append(f'http://127.0.0.1:{port}/mcp')
             
             # Add local network addresses
             try:
@@ -311,7 +311,7 @@ class MCPPlugin(Plugin):
                 hostname = socket.gethostname()
                 local_ip = socket.gethostbyname(hostname)
                 if local_ip != '127.0.0.1':
-                    urls.append(f'http://{local_ip}:{port}/sse')
+                    urls.append(f'http://{local_ip}:{port}/mcp')
             except:
                 pass
             
@@ -328,7 +328,7 @@ class MCPPlugin(Plugin):
                         inet_matches = re.findall(r'inet (\d+\.\d+\.\d+\.\d+)', result.stdout)
                         for ip in inet_matches:
                             if ip != '127.0.0.1' and not ip.startswith('169.254'):  # Skip loopback and link-local
-                                url = f'http://{ip}:{port}/sse'
+                                url = f'http://{ip}:{port}/mcp'
                                 if url not in urls:
                                     urls.append(url)
                 
@@ -338,7 +338,7 @@ class MCPPlugin(Plugin):
                         ips = result.stdout.strip().split()
                         for ip in ips:
                             if ip != '127.0.0.1':
-                                url = f'http://{ip}:{port}/sse'
+                                url = f'http://{ip}:{port}/mcp'
                                 if url not in urls:
                                     urls.append(url)
             except:
@@ -346,7 +346,7 @@ class MCPPlugin(Plugin):
                 pass
         else:
             # Server is bound to specific host
-            urls.append(f'http://{host}:{port}/sse')
+            urls.append(f'http://{host}:{port}/mcp')
         
         return urls
 

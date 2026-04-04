@@ -55,7 +55,7 @@ dependencies = [
     "chardet",
     "dbus-python; platform_system=='Linux'",
     "distro; platform_system=='Linux'",
-    "fastmcp",
+    "fastmcp>=3.0.0",
     "flask",
     "flask-cors",
     "lxml",

@@ -259,7 +259,7 @@ class MCPToolsManager:
             
             # Create the server task
             server_task = asyncio.create_task(
-                self.mcp_server.run_async(transport="sse", host=self.host, port=self.port)
+                self.mcp_server.run_async(transport="http", host=self.host, port=self.port)
             )
             self._server_task = server_task
             
