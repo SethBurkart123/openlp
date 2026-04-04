@@ -133,6 +133,9 @@ class MediaController(QtWidgets.QWidget, RegistryBase, LogMixin, RegistryPropert
         State().add_service("mediacontroller", 0)
         State().add_service("media_live", 0)
         has_vlc = get_vlc()
+        log.info("Media bootstrap: has_vlc=%s, pymediainfo_available=%s", bool(has_vlc), pymediainfo_available)
+        if not pymediainfo_available:
+            log.warning("pymediainfo is not installed - media playback will be disabled")
         if has_vlc and pymediainfo_available:
             State().update_pre_conditions("mediacontroller", True)
             State().update_pre_conditions("media_live", True)

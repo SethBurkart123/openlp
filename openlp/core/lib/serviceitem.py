@@ -908,14 +908,19 @@ class ServiceItem(RegistryProperties):
         self.is_valid = True
         for slide in self.slides:
             if self.is_image() and not os.path.exists(slide['path']):
+                log.warning("Service item '%s' invalid: image path does not exist: %s", self.title, slide['path'])
                 self.is_valid = False
                 break
             elif self.is_command():
                 # Needs Media but no media processing available.
                 if self.is_capable(ItemCapabilities.RequiresMedia) and not State().check_preconditions('media'):
+                    log.warning("Service item '%s' invalid: RequiresMedia capability but media preconditions "
+                                "not met (VLC or pymediainfo missing)", self.title)
                     self.is_valid = False
                     break
                 elif self.is_capable(ItemCapabilities.HasBackgroundAudio) and not State().check_preconditions('media'):
+                    log.warning("Service item '%s' invalid: HasBackgroundAudio capability but media preconditions "
+                                "not met", self.title)
                     self.is_valid = False
                     break
                 elif self.is_capable(ItemCapabilities.IsOptical) and State().check_preconditions('media'):

@@ -58,17 +58,24 @@ def get_vlc():
     if "vlc" not in sys.modules:
         try:
             import vlc  # noqa module is not used directly, but is used via sys.modules['vlc']
-        except (ImportError, OSError):
+        except (ImportError, OSError) as e:
+            log.warning("Failed to import vlc module: %s", e)
             return None
     vlc_module = sys.modules["vlc"]
+    log.debug("VLC module imported successfully: %s", vlc_module)
     # Verify that VLC is also loadable
     is_vlc_available = False
     try:
         is_vlc_available = bool(vlc_module.get_default_instance())
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("VLC get_default_instance() failed: %s", e)
     if is_vlc_available:
+        try:
+            log.info("VLC is available, version: %s", vlc_module.libvlc_get_version())
+        except Exception:
+            log.info("VLC is available (could not determine version)")
         return vlc_module
+    log.warning("VLC module was imported but get_default_instance() returned falsy - VLC is NOT available")
     return None
 
 
